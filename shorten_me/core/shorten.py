@@ -52,6 +52,6 @@ def embiggen(short_url: str) -> int:
         for char in short_url:
             url_id = url_id * BASE + ALPHABET.index(char)
     except ValueError:  # if a character not in the alphabet is in the url
-        pass
+        return 0  # In case the url_id has been partially calculated. 
 
     return url_id
