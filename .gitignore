@@ -75,3 +75,4 @@ docs/_build/
 __pypackages__/
 
 !/shorten_me/db/database.db
+shorten_me/db/database.db
