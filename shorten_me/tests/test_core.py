@@ -27,7 +27,7 @@ class LinkTest(unittest.TestCase):
         self.assertEqual("v", result.json["short_url"])
 
     def test_add_invalid_link(self):
-        result = self.client.post("/", data={"long_url": "http://bllli.sddm"})
+        result = self.client.post("/", data={"long_url": "http://"})
         self.assertEqual(404, result.status_code)
 
     def test_get_via_short_url(self):

@@ -1,7 +1,6 @@
-import urllib3
 from typing import Tuple, Dict, Union
+from urllib.parse import urlparse
 
-import requests
 from flask_restful import Resource, reqparse
 
 from shorten_me.core.shorten import embiggen, shorten
@@ -23,13 +22,8 @@ class Link(Resource):
     def post(self) -> Tuple[Dict[str, Union[int, str]], int]:
         data = self.parser.parse_args()
         long_url = data["long_url"]
-        try:
-            # Very simple way to check if a given URL is valid
-            # could be more robust
-            res = requests.get(url=long_url)
-            if not res.status_code == 200:
-                raise requests.exceptions.RequestException
-        except requests.exceptions.RequestException:
+        # Extremely fragile testing of via
+        if not validate_url(long_url):
             return {"message": "URL given is invalid"}, 404
         link = LinkModel.fetch_by_long_url(long_url)
         if not link:
@@ -60,3 +54,19 @@ class ShortLink(Resource):
 
         return {"message": "Short URL not found."}, 404
 
+
+def validate_url(src_url: str) -> bool:
+    """
+    Given a url check for potential validity.
+
+    Parameters
+    ----------
+    src_url
+        A url as a string to validate
+
+    Returns
+    -------
+    True if the given url is potentially valid
+    """
+    url = urlparse(src_url)
+    return bool(url.hostname)
