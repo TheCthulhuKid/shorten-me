@@ -1,10 +1,10 @@
 from typing import Tuple, Dict, Union
-from urllib.parse import urlparse
 
 from flask_restful import Resource, reqparse
 
-from shorten_me.core.shorten import embiggen, shorten
+from shorten_me.codec import InvalidShortCode, decode, encode
 from shorten_me.models.link import LinkModel
+from shorten_me.urls import InvalidUrl, validate_long_url
 
 
 class Link(Resource):
@@ -22,15 +22,16 @@ class Link(Resource):
     def post(self) -> Tuple[Dict[str, Union[int, str]], int]:
         data = self.parser.parse_args()
         long_url = data["long_url"]
-        # Extremely fragile testing of via
-        if not validate_url(long_url):
+        try:
+            validate_long_url(long_url)
+        except InvalidUrl:
             return {"message": "URL given is invalid"}, 404
         link = LinkModel.fetch_by_long_url(long_url)
         if not link:
             link = LinkModel(long_url)
             link.save_to_db()
 
-        return {"short_url": shorten(link.id)}, 200
+        return {"short_url": encode(link.id)}, 200
 
     @classmethod
     def get(cls) -> Tuple[Dict[str, str], int]:
@@ -44,8 +45,10 @@ class ShortLink(Resource):
 
     @classmethod
     def get(cls, short_url: str) -> Tuple[Dict[str, Union[int, str]], int]:
-        link_id = embiggen(short_url)
-        link = LinkModel.fetch_by_id(link_id)
+        try:
+            link = LinkModel.fetch_by_id(decode(short_url))
+        except InvalidShortCode:
+            link = None
 
         if link:
             link.hit()
@@ -54,19 +57,3 @@ class ShortLink(Resource):
 
         return {"message": "Short URL not found."}, 404
 
-
-def validate_url(src_url: str) -> bool:
-    """
-    Given a url check for potential validity.
-
-    Parameters
-    ----------
-    src_url
-        A url as a string to validate
-
-    Returns
-    -------
-    True if the given url is potentially valid
-    """
-    url = urlparse(src_url)
-    return bool(url.hostname)

@@ -2,7 +2,6 @@ import unittest
 
 from shorten_me.app import app as test_app
 from shorten_me.config import TestConfig
-from shorten_me.core.shorten import embiggen, shorten
 from shorten_me.db import db
 
 
@@ -42,13 +41,3 @@ class LinkTest(unittest.TestCase):
         result = self.client.get("/Oo0")  # invalid chars
         self.assertEqual(404, result.status_code)
 
-
-class ShortenTest(unittest.TestCase):
-
-    def test_shorten(self):
-        self.assertEqual("p", shorten(1))
-        self.assertEqual("vcTJ", shorten(598463))
-
-    def test_embiggen(self):
-        self.assertEqual(1, embiggen("p"))
-        self.assertEqual(598463, embiggen("vcTJ"))
