@@ -40,3 +40,12 @@ def test_expired_short_link_returns_410(client):
     code = client.post("/", json=body).json()["code"]
     client.app.state.clock = lambda: datetime(2031, 1, 1, tzinfo=UTC)
     assert client.get(f"/{code}").status_code == 410
+
+
+def test_too_many_requests_return_429_with_retry_after(tmp_path):
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", rate_limit=1)
+    with TestClient(create_app(settings)) as client:
+        client.post("/", json={"long_url": "https://example.com/a"})
+        response = client.post("/", json={"long_url": "https://example.com/a"})
+    assert response.status_code == 429
+    assert 0 < int(response.headers["retry-after"]) <= 60

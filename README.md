@@ -20,6 +20,7 @@ Settings come from environment variables:
 | `SHORTEN_ME_HOST` | `127.0.0.1` |
 | `SHORTEN_ME_PORT` | `8000` |
 | `SHORTEN_ME_DEBUG` | `false` |
+| `SHORTEN_ME_RATE_LIMIT` | `10` (links per client per minute; `0` turns it off) |
 
 Database migrations are applied on startup.
 
@@ -51,6 +52,9 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   posting without `expires_at` makes it permanent, so a request can't cut short a link that
   someone else holds; this also revives an expired link. `expires_at` in the response is the
   expiry that applies, in UTC (`null` for never).
+* `POST /` is rate limited per client IP address: a client can make `SHORTEN_ME_RATE_LIMIT`
+  requests in a burst, and gets them back evenly over a minute. Beyond that it returns 429
+  with a `Retry-After` header in seconds. Redirects and stats aren't limited.
 * `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404;
   expired links return 410.
 * `GET /{code}/stats` returns the long URL, hit count, creation time and expiry (UTC)

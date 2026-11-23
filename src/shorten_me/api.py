@@ -1,5 +1,6 @@
 """HTTP routes."""
 
+import math
 from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated
@@ -9,6 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import AwareDatetime, BaseModel
 from sqlalchemy.orm import Session
 
+from shorten_me.ratelimit import RateLimited
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService
 
 router = APIRouter()
@@ -49,7 +51,17 @@ def get_service(request: Request) -> Iterator[LinkService]:
 Service = Annotated[LinkService, Depends(get_service)]
 
 
-@router.post("/")
+def limit_rate(request: Request) -> None:
+    """Count the request against its client's rate limit, if limiting is on."""
+    limiter = request.app.state.rate_limiter
+    if limiter is None:
+        return
+    if request.client is None:
+        raise RuntimeError("the server gave no client address to rate limit by")
+    limiter.take(request.client.host)
+
+
+@router.post("/", dependencies=[Depends(limit_rate)])
 def shorten(body: ShortenRequest, service: Service, request: Request) -> ShortenResponse:
     code = service.shorten(body.long_url, body.alias, body.expires_at)
     return ShortenResponse(
@@ -82,6 +94,14 @@ def link_not_found(request: Request, error: LinkNotFound) -> JSONResponse:
 
 def link_expired(request: Request, error: LinkExpired) -> JSONResponse:
     return JSONResponse({"detail": "Short URL has expired"}, status_code=410)
+
+
+def rate_limited(request: Request, error: RateLimited) -> JSONResponse:
+    return JSONResponse(
+        {"detail": "Too many requests"},
+        status_code=429,
+        headers={"Retry-After": str(math.ceil(error.retry_after))},
+    )
 
 
 def alias_taken(request: Request, error: AliasTaken) -> JSONResponse:

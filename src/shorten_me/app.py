@@ -1,5 +1,6 @@
 """Build and run the web application."""
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from sqlalchemy import create_engine
 
 from shorten_me import api
 from shorten_me.aliases import InvalidAlias
+from shorten_me.ratelimit import RateLimited, RateLimiter
 from shorten_me.schema import upgrade_to_head
 from shorten_me.service import AliasTaken, InvalidExpiry, LinkExpired, LinkNotFound
 from shorten_me.settings import Settings
@@ -29,9 +31,15 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="shorten-me", debug=settings.debug, lifespan=lifespan)
     app.state.engine = engine
     app.state.clock = lambda: datetime.now(UTC)
+    app.state.rate_limiter = (
+        RateLimiter(settings.rate_limit, period=60, clock=time.monotonic)
+        if settings.rate_limit
+        else None
+    )
     app.include_router(api.router)
     app.add_exception_handler(LinkNotFound, api.link_not_found)
     app.add_exception_handler(LinkExpired, api.link_expired)
+    app.add_exception_handler(RateLimited, api.rate_limited)
     app.add_exception_handler(AliasTaken, api.alias_taken)
     app.add_exception_handler(InvalidUrl, api.invalid_input)
     app.add_exception_handler(InvalidAlias, api.invalid_input)
