@@ -57,4 +57,5 @@ uv sync --locked --group dev
 .venv/bin/python -m ruff format --check .
 ```
 
-CI runs the same checks on every push to `master` and every pull request.
+CI runs the same checks and builds the Docker image on every push to `master` and every
+pull request.
