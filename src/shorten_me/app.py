@@ -50,4 +50,10 @@ def create_app(settings: Settings) -> FastAPI:
 def main() -> None:
     """Run the service with settings from the environment."""
     settings = Settings()
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
+    uvicorn.run(
+        create_app(settings),
+        host=settings.host,
+        port=settings.port,
+        proxy_headers=settings.proxy_headers,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
+    )

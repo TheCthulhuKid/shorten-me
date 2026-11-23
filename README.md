@@ -21,8 +21,20 @@ Settings come from environment variables:
 | `SHORTEN_ME_PORT` | `8000` |
 | `SHORTEN_ME_DEBUG` | `false` |
 | `SHORTEN_ME_RATE_LIMIT` | `10` (links per client per minute; `0` turns it off) |
+| `SHORTEN_ME_PROXY_HEADERS` | `true` |
+| `SHORTEN_ME_FORWARDED_ALLOW_IPS` | `127.0.0.1,::1` |
 
 Database migrations are applied on startup.
+
+### Behind a reverse proxy
+
+With `SHORTEN_ME_PROXY_HEADERS` on, the service takes the client address and scheme from
+`X-Forwarded-For` and `X-Forwarded-Proto`, but only from the addresses in
+`SHORTEN_ME_FORWARDED_ALLOW_IPS` (comma-separated IPs or networks, or `*` for any). The rate
+limit and the scheme of `short_url` depend on this. The host of `short_url` comes from the
+`Host` header, so the proxy must pass it through (in nginx, `proxy_set_header Host $host`).
+A proxy outside the container, as with Docker, isn't on `127.0.0.1`, so set
+`SHORTEN_ME_FORWARDED_ALLOW_IPS` to its address.
 
 ### Docker
 
