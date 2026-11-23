@@ -35,7 +35,8 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
 
 ## API
 
-* `POST /` with a JSON body `{"long_url": "https://..."}` returns `{"code": ..., "short_url": ...}`.
+* `POST /` with a JSON body `{"long_url": "https://..."}` returns
+  `{"code": ..., "short_url": ..., "expires_at": ...}`.
   Shortening the same URL again returns the same code. A URL that isn't http(s) or is longer
   than 2048 characters returns 422.
 * `POST /` with `{"long_url": "https://...", "alias": "my-link"}` uses the alias as the code.
@@ -44,9 +45,16 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   returns 409. Aliases are case-sensitive and have 3 to 32 letters, digits, `-` or `_`. An
   alias that could also be a generated code (see below) and the names `docs` and `redoc`
   return 422.
-* `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404.
-* `GET /{code}/stats` returns the long URL, hit count and creation time (UTC) without
-  counting a hit.
+* `POST /` with `"expires_at": "2027-01-01T00:00:00Z"` makes the link expire then. The time
+  needs a timezone and must be in the future, or the request returns 422. A link expires
+  for all its codes and aliases. Posting the URL again only moves its expiry later, and
+  posting without `expires_at` makes it permanent, so a request can't cut short a link that
+  someone else holds; this also revives an expired link. `expires_at` in the response is the
+  expiry that applies, in UTC (`null` for never).
+* `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404;
+  expired links return 410.
+* `GET /{code}/stats` returns the long URL, hit count, creation time and expiry (UTC)
+  without counting a hit. It works for expired links too.
 
 ## How codes work
 

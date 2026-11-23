@@ -1,9 +1,9 @@
 """Shorten long URLs and resolve short codes."""
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import ScalarSelect, Select, select, update
+from sqlalchemy import ScalarSelect, Select, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,14 @@ class LinkNotFound(LookupError):
     """Raised when a short code doesn't belong to any link."""
 
 
+class LinkExpired(LookupError):
+    """Raised when a short code belongs to a link whose expiry has passed."""
+
+
+class InvalidExpiry(ValueError):
+    """Raised when a requested expiry has no timezone or isn't in the future."""
+
+
 class AliasTaken(ValueError):
     """Raised when a custom alias already belongs to a different link."""
 
@@ -28,17 +36,23 @@ class LinkService:
         self._session = session
         self._clock = clock
 
-    def shorten(self, long_url: str, alias: str | None = None) -> str:
+    def shorten(
+        self, long_url: str, alias: str | None = None, expires_at: datetime | None = None
+    ) -> str:
         """Return the short code for a URL, creating its link on first use.
 
-        With an alias, the alias is attached to the link and returned as its code.
+        With an alias, the alias is attached to the link and returned as its code. An existing
+        link's expiry is only ever pushed later, and no expiry means the link never expires.
         """
         validate_long_url(long_url)
         if alias is not None:
             validate_alias(alias)
+        if expires_at is not None:
+            expires_at = self._future_utc(expires_at)
         link = self._find(long_url)
         if link is None:
-            link = self._create(long_url)
+            link = self._create(long_url, expires_at)
+        self._extend(link, expires_at)
         code = encode(link.id) if alias is None else self._claim(alias, link)
         self._session.commit()
         return code
@@ -51,19 +65,29 @@ class LinkService:
         return link
 
     def resolve(self, code: str) -> str:
-        """Count a hit on a short code and return its long URL."""
-        count_hit = update(Link).where(Link.id == _link_id(code)).values(hits=Link.hits + 1)
+        """Count a hit on a short code and return its long URL, if the link hasn't expired."""
+        live = or_(Link.expires_at.is_(None), Link.expires_at > self._clock())
+        count_hit = update(Link).where(Link.id == _link_id(code), live).values(hits=Link.hits + 1)
         long_url = self._session.scalar(count_hit.returning(Link.long_url))
         if long_url is None:
-            raise LinkNotFound(code)
+            self.find(code)
+            raise LinkExpired(code)
         self._session.commit()
         return long_url
 
     def _find(self, long_url: str) -> Link | None:
         return self._session.scalar(_by_url(long_url))
 
-    def _create(self, long_url: str) -> Link:
-        link = Link(long_url=long_url, created_at=self._clock())
+    def _future_utc(self, expires_at: datetime) -> datetime:
+        if expires_at.tzinfo is None:
+            raise InvalidExpiry("expiry must include a timezone")
+        if expires_at <= self._clock():
+            raise InvalidExpiry("expiry must be in the future")
+        # SQLite stores datetimes without their offset, so all of them must be in UTC.
+        return expires_at.astimezone(UTC)
+
+    def _create(self, long_url: str, expires_at: datetime | None) -> Link:
+        link = Link(long_url=long_url, created_at=self._clock(), expires_at=expires_at)
         try:
             with self._session.begin_nested():
                 self._session.add(link)
@@ -71,6 +95,17 @@ class LinkService:
             # Another request inserted the same URL between our lookup and insert.
             return self._session.scalars(_by_url(long_url)).one()
         return link
+
+    def _extend(self, link: Link, expires_at: datetime | None) -> None:
+        # A single conditional UPDATE, so concurrent requests can't move the expiry earlier.
+        extend = update(Link).where(Link.id == link.id, Link.expires_at.is_not(None))
+        if expires_at is not None:
+            extend = extend.where(Link.expires_at < expires_at)
+        # SQLite loads expires_at without a timezone, so the ORM can't evaluate the WHERE in
+        # Python against the session's objects; read the updated rows back instead.
+        self._session.execute(
+            extend.values(expires_at=expires_at), execution_options={"synchronize_session": "fetch"}
+        )
 
     def _claim(self, alias: str, link: Link) -> str:
         try:

@@ -33,6 +33,7 @@ class Link(Base):
     long_url: Mapped[str] = mapped_column(String(MAX_URL_LENGTH), unique=True)
     hits: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Alias(Base):

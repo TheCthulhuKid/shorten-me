@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -31,3 +33,10 @@ def test_alias_taken_by_another_url_returns_409(client):
     client.post("/", json={"long_url": "https://example.com/a", "alias": "my-link"})
     response = client.post("/", json={"long_url": "https://example.com/b", "alias": "my-link"})
     assert response.status_code == 409
+
+
+def test_expired_short_link_returns_410(client):
+    body = {"long_url": "https://example.com/a", "expires_at": "2030-01-01T00:00:00Z"}
+    code = client.post("/", json=body).json()["code"]
+    client.app.state.clock = lambda: datetime(2031, 1, 1, tzinfo=UTC)
+    assert client.get(f"/{code}").status_code == 410
