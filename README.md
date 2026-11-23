@@ -2,17 +2,12 @@
 Simple url shortener.
 
 ## Implementation
-Flask is used to serve the requests. This was chosen for its simplicity and
-ease of use. SQLAlchemy was chosen to handle the models for the same reasons.
-A bijective conversion was used to generate the shortened urls; for details
-see: https://en.wikipedia.org/wiki/Bijection
+FastAPI serves the requests and SQLAlchemy stores the links. Each link's database id is
+written in a 56-character alphabet (no 0, 1, I, l, o or O) to make its short code.
 
 ## Endpoints
-Two simple endpoints:
-* "/" - [POST] which must be passed a "long_url" in the data. If the URL is 
-valid it will be added to the database and a short URL generated.
-* "/<str:short_url>" - [GET] the "short_url" is used to determine the database 
-ID of the relevant link.
-
-## Testing
-Only basic unit tests have been included
+* `POST /` with a JSON body `{"long_url": "https://..."}` returns `{"code": ..., "short_url": ...}`.
+  Shortening the same URL again returns the same code. A URL that isn't http(s) or is longer
+  than 2048 characters returns 422.
+* `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404.
+* `GET /{code}/stats` returns the long URL, hit count and creation time without counting a hit.

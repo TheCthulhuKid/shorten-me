@@ -32,13 +32,16 @@ class LinkService:
         self._session.commit()
         return encode(link.id)
 
+    def find(self, code: str) -> Link:
+        """Return the link for a short code without counting a hit."""
+        link = self._session.get(Link, _link_id(code))
+        if link is None:
+            raise LinkNotFound(code)
+        return link
+
     def resolve(self, code: str) -> str:
         """Count a hit on a short code and return its long URL."""
-        try:
-            link_id = decode(code)
-        except InvalidShortCode as error:
-            raise LinkNotFound(code) from error
-        count_hit = update(Link).where(Link.id == link_id).values(hits=Link.hits + 1)
+        count_hit = update(Link).where(Link.id == _link_id(code)).values(hits=Link.hits + 1)
         long_url = self._session.scalar(count_hit.returning(Link.long_url))
         if long_url is None:
             raise LinkNotFound(code)
@@ -57,6 +60,13 @@ class LinkService:
             # Another request inserted the same URL between our lookup and insert.
             return self._session.scalars(_by_url(long_url)).one()
         return link
+
+
+def _link_id(code: str) -> int:
+    try:
+        return decode(code)
+    except InvalidShortCode as error:
+        raise LinkNotFound(code) from error
 
 
 def _by_url(long_url: str) -> Select[tuple[Link]]:

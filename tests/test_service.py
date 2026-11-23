@@ -19,3 +19,8 @@ def test_following_a_short_link_counts_a_hit(service, session):
     assert service.resolve(code) == "https://example.com/a"
     service.resolve(code)
     assert session.query(Link).one().hits == 2
+
+
+def test_stats_do_not_count_a_hit(service):
+    code = service.shorten("https://example.com/a")
+    assert service.find(code).hits == 0
