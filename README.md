@@ -23,6 +23,16 @@ Settings come from environment variables:
 
 Tables are created on startup.
 
+### Docker
+
+```sh
+docker build -t shorten-me .
+docker run -p 8000:8000 -v shorten-me-data:/data shorten-me
+```
+
+In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database in the
+`/data` volume.
+
 ## API
 
 * `POST /` with a JSON body `{"long_url": "https://..."}` returns `{"code": ..., "short_url": ...}`.
