@@ -9,8 +9,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from shorten_me.service import LinkNotFound, LinkService
-from shorten_me.urls import InvalidUrl
+from shorten_me.service import AliasTaken, LinkNotFound, LinkService
 
 router = APIRouter()
 
@@ -19,6 +18,7 @@ class ShortenRequest(BaseModel):
     """Body of `POST /`."""
 
     long_url: str
+    alias: str | None = None
 
 
 class ShortenResponse(BaseModel):
@@ -48,7 +48,7 @@ Service = Annotated[LinkService, Depends(get_service)]
 
 @router.post("/")
 def shorten(body: ShortenRequest, service: Service, request: Request) -> ShortenResponse:
-    code = service.shorten(body.long_url)
+    code = service.shorten(body.long_url, body.alias)
     return ShortenResponse(code=code, short_url=str(request.url_for("follow", code=code)))
 
 
@@ -67,5 +67,9 @@ def link_not_found(request: Request, error: LinkNotFound) -> JSONResponse:
     return JSONResponse({"detail": "Short URL not found"}, status_code=404)
 
 
-def invalid_url(request: Request, error: InvalidUrl) -> JSONResponse:
+def alias_taken(request: Request, error: AliasTaken) -> JSONResponse:
+    return JSONResponse({"detail": "Alias is already in use"}, status_code=409)
+
+
+def invalid_input(request: Request, error: ValueError) -> JSONResponse:
     return JSONResponse({"detail": str(error)}, status_code=422)

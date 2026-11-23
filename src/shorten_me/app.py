@@ -9,8 +9,9 @@ from fastapi import FastAPI
 from sqlalchemy import create_engine
 
 from shorten_me import api
+from shorten_me.aliases import InvalidAlias
 from shorten_me.schema import upgrade_to_head
-from shorten_me.service import LinkNotFound
+from shorten_me.service import AliasTaken, LinkNotFound
 from shorten_me.settings import Settings
 from shorten_me.urls import InvalidUrl
 
@@ -30,7 +31,9 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.clock = lambda: datetime.now(UTC)
     app.include_router(api.router)
     app.add_exception_handler(LinkNotFound, api.link_not_found)
-    app.add_exception_handler(InvalidUrl, api.invalid_url)
+    app.add_exception_handler(AliasTaken, api.alias_taken)
+    app.add_exception_handler(InvalidUrl, api.invalid_input)
+    app.add_exception_handler(InvalidAlias, api.invalid_input)
     return app
 
 

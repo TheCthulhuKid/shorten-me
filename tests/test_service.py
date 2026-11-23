@@ -24,3 +24,8 @@ def test_following_a_short_link_counts_a_hit(service, session):
 def test_stats_do_not_count_a_hit(service):
     code = service.shorten("https://example.com/a")
     assert service.find(code).hits == 0
+
+
+def test_custom_alias_resolves_to_the_long_url(service):
+    assert service.shorten("https://example.com/a", alias="my-link") == "my-link"
+    assert service.resolve("my-link") == "https://example.com/a"

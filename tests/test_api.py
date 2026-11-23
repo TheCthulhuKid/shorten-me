@@ -25,3 +25,9 @@ def test_invalid_url_returns_422(client):
 
 def test_unknown_short_code_returns_404(client):
     assert client.get("/vcTJ").status_code == 404
+
+
+def test_alias_taken_by_another_url_returns_409(client):
+    client.post("/", json={"long_url": "https://example.com/a", "alias": "my-link"})
+    response = client.post("/", json={"long_url": "https://example.com/b", "alias": "my-link"})
+    assert response.status_code == 409

@@ -38,6 +38,12 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
 * `POST /` with a JSON body `{"long_url": "https://..."}` returns `{"code": ..., "short_url": ...}`.
   Shortening the same URL again returns the same code. A URL that isn't http(s) or is longer
   than 2048 characters returns 422.
+* `POST /` with `{"long_url": "https://...", "alias": "my-link"}` uses the alias as the code.
+  A link keeps its generated code, and can have several aliases that share its hit count.
+  Posting the same URL and alias again returns 200; an alias that belongs to another URL
+  returns 409. Aliases are case-sensitive and have 3 to 32 letters, digits, `-` or `_`. An
+  alias that could also be a generated code (see below) and the names `docs` and `redoc`
+  return 422.
 * `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404.
 * `GET /{code}/stats` returns the long URL, hit count and creation time (UTC) without
   counting a hit.
@@ -47,6 +53,9 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
 Each link's database id is written in a shuffled 56-character alphabet that leaves out
 0, 1, I, l, o and O, so codes are short and hard to misread. Codes are sequential ids, so
 they can be enumerated.
+
+Every string made only of alphabet characters that doesn't start with `D` is some id's code,
+so an alias needs a `-`, `_`, one of the left-out characters, or a leading `D`.
 
 ## Development
 
