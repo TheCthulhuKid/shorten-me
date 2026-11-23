@@ -1,17 +1,40 @@
 [project]
 name = "shorten-me"
 version = "0.1.0"
-description = "Add your description here"
+description = "A small URL shortener service."
 readme = "README.md"
 authors = [
     { name = "Marc", email = "gileadslostson@gmail.com" }
 ]
-requires-python = ">=3.14"
-dependencies = []
-
-[project.scripts]
-shorten-me = "shorten_me:main"
+requires-python = ">=3.15"
+dependencies = [
+    "fastapi>=0.165.0",
+    "pydantic-settings>=2.16.3",
+    "sqlalchemy>=2.1.9",
+    "uvicorn>=0.54.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--cov=shorten_me", "--cov-report=term-missing"]
+
+[tool.coverage.report]
+fail_under = 80
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.6",
+]
