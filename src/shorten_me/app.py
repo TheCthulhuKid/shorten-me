@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from sqlalchemy import create_engine
 
 from shorten_me import api
-from shorten_me.models import Base
+from shorten_me.schema import upgrade_to_head
 from shorten_me.service import LinkNotFound
 from shorten_me.settings import Settings
 from shorten_me.urls import InvalidUrl
@@ -21,7 +21,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        Base.metadata.create_all(engine)
+        upgrade_to_head(settings.database_url)
         yield
         engine.dispose()
 

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, MetaData, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from shorten_me.urls import MAX_URL_LENGTH
@@ -10,6 +10,17 @@ from shorten_me.urls import MAX_URL_LENGTH
 
 class Base(DeclarativeBase):
     """Declarative base for all tables."""
+
+    # Named constraints let SQLite batch migrations find them again.
+    metadata = MetaData(
+        naming_convention={
+            "ix": "ix_%(table_name)s_%(column_0_name)s",
+            "uq": "uq_%(table_name)s_%(column_0_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "pk": "pk_%(table_name)s",
+        }
+    )
 
 
 class Link(Base):

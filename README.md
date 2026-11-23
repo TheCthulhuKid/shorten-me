@@ -21,7 +21,7 @@ Settings come from environment variables:
 | `SHORTEN_ME_PORT` | `8000` |
 | `SHORTEN_ME_DEBUG` | `false` |
 
-Tables are created on startup.
+Database migrations are applied on startup.
 
 ### Docker
 
@@ -56,6 +56,19 @@ uv sync --locked --group dev
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 ```
+
+After changing `models.py`, generate a migration, review it, and commit it with the change:
+
+```sh
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -m alembic revision --autogenerate -m "describe the change"
+```
+
+Both commands use the database in `SHORTEN_ME_DATABASE_URL`; autogenerate compares the models
+against it, so it has to be at the latest revision first.
+
+Migrations live in `src/shorten_me/migrations/versions/`. A test fails if they don't match
+the models.
 
 CI runs the same checks and builds the Docker image on every push to `master` and every
 pull request.
