@@ -34,6 +34,10 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--cov=shorten_me", "--cov-report=term-missing"]
+filterwarnings = [
+    "error::ResourceWarning",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
 
 [tool.coverage.report]
 fail_under = 80
