@@ -1,10 +1,10 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
 
 from shorten_me.models import Alias, Link
-from shorten_me.service import LinkExpired, LinkService
+from shorten_me.service import InvalidExpiry, LinkExpired, LinkService
 
 
 def test_shortening_the_same_url_twice_returns_the_same_code(service, session):
@@ -71,3 +71,9 @@ def test_codes_of_deleted_links_are_not_reused(session):
     now = datetime(2026, 2, 1, tzinfo=UTC)
     service.delete_expired(timedelta(0))
     assert service.shorten("https://example.com/new") != code
+
+
+def test_expiry_beyond_the_latest_utc_time_is_rejected(service):
+    expires_at = datetime(9999, 12, 31, 23, 59, tzinfo=timezone(timedelta(hours=-1)))
+    with pytest.raises(InvalidExpiry):
+        service.shorten("https://example.com/a", expires_at=expires_at)

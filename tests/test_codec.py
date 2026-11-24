@@ -20,3 +20,8 @@ def test_decode_rejects_codes_with_a_leading_zero_digit():
 def test_decode_rejects_characters_outside_the_alphabet():
     with pytest.raises(InvalidShortCode):
         decode("Oo0")
+
+
+def test_decode_rejects_codes_beyond_the_largest_link_id():
+    with pytest.raises(InvalidShortCode):
+        decode("NNNNNNNNNNNN")

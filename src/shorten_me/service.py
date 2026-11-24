@@ -91,10 +91,14 @@ class LinkService:
     def _future_utc(self, expires_at: datetime) -> datetime:
         if expires_at.tzinfo is None:
             raise InvalidExpiry("expiry must include a timezone")
+        try:
+            # SQLite stores datetimes without their offset, so all of them must be in UTC.
+            expires_at = expires_at.astimezone(UTC)
+        except OverflowError as error:
+            raise InvalidExpiry("expiry is out of range") from error
         if expires_at <= self._clock():
             raise InvalidExpiry("expiry must be in the future")
-        # SQLite stores datetimes without their offset, so all of them must be in UTC.
-        return expires_at.astimezone(UTC)
+        return expires_at
 
     def _create(self, long_url: str, expires_at: datetime | None) -> Link:
         link = Link(long_url=long_url, created_at=self._clock(), expires_at=expires_at)

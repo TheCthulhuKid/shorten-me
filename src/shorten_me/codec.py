@@ -6,6 +6,7 @@ consecutive ids don't produce visibly consecutive codes.
 
 ALPHABET = "DpYvf5uRng8kKAbrZXUH23cPdhzqam9xQB4ywjGEVtWiFMTJCse6LS7N"
 BASE = len(ALPHABET)
+MAX_LINK_ID = 2**63 - 1
 _DIGITS = {char: value for value, char in enumerate(ALPHABET)}
 
 
@@ -14,9 +15,9 @@ class InvalidShortCode(ValueError):
 
 
 def encode(link_id: int) -> str:
-    """Return the short code for a positive link id."""
-    if link_id < 1:
-        raise ValueError(f"link id must be positive, got {link_id}")
+    """Return the short code for a link id between 1 and `MAX_LINK_ID`."""
+    if link_id < 1 or link_id > MAX_LINK_ID:
+        raise ValueError(f"link id must be between 1 and {MAX_LINK_ID}, got {link_id}")
     code = ""
     while link_id:
         link_id, digit = divmod(link_id, BASE)
@@ -33,4 +34,6 @@ def decode(code: str) -> int:
         if char not in _DIGITS:
             raise InvalidShortCode(code)
         link_id = link_id * BASE + _DIGITS[char]
+        if link_id > MAX_LINK_ID:
+            raise InvalidShortCode(code)
     return link_id

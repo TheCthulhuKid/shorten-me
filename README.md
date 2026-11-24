@@ -65,8 +65,8 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   browser's local time to UTC.
 * `POST /` with a JSON body `{"long_url": "https://..."}` returns
   `{"code": ..., "short_url": ..., "expires_at": ...}`.
-  Shortening the same URL again returns the same code. A URL that isn't http(s) or is longer
-  than 2048 characters returns 422.
+  Shortening the same URL again returns the same code. A URL that isn't http(s), is longer
+  than 2048 characters, or contains whitespace or control characters returns 422.
 * `POST /` with `{"long_url": "https://...", "alias": "my-link"}` uses the alias as the code.
   A link keeps its generated code, and can have several aliases that share its hit count.
   Posting the same URL and alias again returns 200; an alias that belongs to another URL
