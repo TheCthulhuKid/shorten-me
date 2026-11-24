@@ -11,7 +11,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from shorten_me.aliases import ALIAS_PATTERN
 from shorten_me.errors import InvalidInput
@@ -59,14 +59,21 @@ class ShortenResponse(BaseModel):
     expires_at: datetime | None
 
 
-class LinkStats(BaseModel):
+class LinkDetails(BaseModel):
     """What is stored about a link."""
 
-    code: str
+    model_config = ConfigDict(from_attributes=True)
+
     long_url: str
     hits: int
     created_at: datetime
     expires_at: datetime | None
+
+
+class LinkStats(LinkDetails):
+    """A link's details and the code they were asked for by."""
+
+    code: str
 
 
 def get_service(request: Request) -> Iterator[LinkService]:
@@ -123,14 +130,8 @@ def preview(code: str, service: Service) -> str:
 
 @router.get("/{code}/stats")
 def stats(code: str, service: Service) -> LinkStats:
-    link = service.find(code)
-    return LinkStats(
-        code=code,
-        long_url=link.long_url,
-        hits=link.hits,
-        created_at=link.created_at,
-        expires_at=link.expires_at,
-    )
+    details = LinkDetails.model_validate(service.find(code))
+    return LinkStats(code=code, **details.model_dump())
 
 
 def link_not_found(_request: Request, _error: LinkNotFound) -> JSONResponse:
