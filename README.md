@@ -131,5 +131,10 @@ The service enforces foreign keys on SQLite (`create_db_engine`), so deleting a 
 its aliases. Migrations run without that, because SQLite can't rebuild a table that other
 rows reference while foreign keys are enforced.
 
+`create_db_engine` also opens every SQLite transaction with `BEGIN IMMEDIATE`. Python's
+`sqlite3` would otherwise commit a released savepoint that the request later rolls back, and a
+transaction that reads and then writes could fail with "database is locked". The cost is that
+requests run one at a time against the database, including read-only ones.
+
 CI runs the same checks and builds the Docker image on every push to `master` and every
 pull request.

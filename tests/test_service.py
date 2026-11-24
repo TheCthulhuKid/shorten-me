@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from shorten_me.expiry import InvalidExpiry
 from shorten_me.models import Alias, Link
-from shorten_me.service import LinkExpired, LinkService, ShortLink
+from shorten_me.service import AliasTaken, LinkExpired, LinkService, ShortLink
 
 
 def test_shortening_the_same_url_twice_returns_the_same_code(service, session):
@@ -84,3 +84,11 @@ def test_expiry_beyond_the_latest_utc_time_is_rejected(service):
     expires_at = datetime(9999, 12, 31, 23, 59, tzinfo=timezone(timedelta(hours=-1)))
     with pytest.raises(InvalidExpiry):
         service.shorten("https://example.com/a", expires_at=expires_at)
+
+
+def test_shortening_with_a_taken_alias_creates_no_link(service, session):
+    service.shorten("https://example.com/a", alias="my-link")
+    with pytest.raises(AliasTaken):
+        service.shorten("https://example.com/b", alias="my-link")
+    session.rollback()
+    assert session.query(Link).count() == 1
