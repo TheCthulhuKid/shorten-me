@@ -54,6 +54,11 @@ def test_shortening_again_never_brings_the_expiry_forward(service):
     assert service.find(code).expires_at == datetime(2027, 1, 1, tzinfo=UTC)
 
 
+def test_shortening_again_without_an_expiry_makes_the_link_permanent(service):
+    link = service.shorten("https://example.com/a", expires_at=datetime(2027, 1, 1, tzinfo=UTC))
+    assert service.shorten("https://example.com/a") == ShortLink(link.code, None)
+
+
 def test_cleanup_deletes_only_links_expired_longer_than_the_grace_period(service, session, clock):
     service.shorten("https://example.com/old", "old-link", datetime(2026, 1, 2, tzinfo=UTC))
     service.shorten("https://example.com/recent", expires_at=datetime(2026, 1, 20, tzinfo=UTC))

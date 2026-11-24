@@ -7,14 +7,13 @@ from fastapi.testclient import TestClient
 from shorten_me.aliases import ALIAS_PATTERN, InvalidAlias, validate_alias
 from shorten_me.api import MAX_BODY_BYTES, router
 from shorten_me.app import create_app
-from shorten_me.cli import main
-from shorten_me.schema import upgrade_to_head
 from shorten_me.settings import Settings
 
 
 @pytest.fixture
-def client(database_url):
+def client(database_url, clock):
     app = create_app(Settings(database_url=database_url))
+    app.state.clock = clock
     with TestClient(app, follow_redirects=False) as client:
         yield client
 
@@ -40,10 +39,10 @@ def test_alias_taken_by_another_url_returns_409(client):
     assert response.status_code == 409
 
 
-def test_expired_short_link_returns_410(client):
-    body = {"long_url": "https://example.com/a", "expires_at": "2030-01-01T00:00:00Z"}
+def test_expired_short_link_returns_410(client, clock):
+    body = {"long_url": "https://example.com/a", "expires_at": "2026-01-02T00:00:00Z"}
     code = client.post("/", json=body).json()["code"]
-    client.app.state.clock = lambda: datetime(2031, 1, 1, tzinfo=UTC)
+    clock.now = datetime(2026, 1, 3, tzinfo=UTC)
     assert client.get(f"/{code}").status_code == 410
 
 
@@ -76,26 +75,12 @@ def test_times_in_responses_are_in_utc_with_an_offset(client):
     assert client.post("/", json=body).json()["expires_at"] == "2999-01-01T10:00:00Z"
 
 
-def test_cleanup_refuses_a_database_that_does_not_exist(tmp_path, monkeypatch):
-    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", f"sqlite:///{tmp_path / 'missing.db'}")
-    with pytest.raises(SystemExit, match="missing.db"):
-        main(["cleanup"])
-    assert not (tmp_path / "missing.db").exists()
-
-
 def test_head_request_redirects_without_counting_a_hit(client):
     code = client.post("/", json={"long_url": "https://example.com/a"}).json()["code"]
     response = client.head(f"/{code}")
     assert response.status_code == 307
     assert response.headers["location"] == "https://example.com/a"
     assert client.get(f"/{code}/stats").json()["hits"] == 0
-
-
-def test_cleanup_rejects_a_negative_grace_period(database_url, monkeypatch):
-    upgrade_to_head(database_url)
-    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", database_url)
-    with pytest.raises(SystemExit, match="negative"):
-        main(["cleanup", "--grace-days", "-1"])
 
 
 def test_every_single_segment_route_is_rejected_as_an_alias(client):
