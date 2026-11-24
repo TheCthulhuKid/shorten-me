@@ -2,16 +2,18 @@
 
 from urllib.parse import urlsplit
 
+from shorten_me.errors import InvalidInput
+
 MAX_URL_LENGTH = 2048
 ALLOWED_SCHEMES = frozenset({"http", "https"})
 
 
-class InvalidUrl(ValueError):
+class InvalidUrl(InvalidInput):
     """Raised when a submitted URL can't be shortened."""
 
 
-def validate_long_url(url: str) -> str:
-    """Return the URL unchanged if it is a clean, absolute http(s) URL within the length limit."""
+def validate_long_url(url: str) -> None:
+    """Raise `InvalidUrl` unless it is a clean, absolute http(s) URL within the length limit."""
     if len(url) > MAX_URL_LENGTH:
         raise InvalidUrl(f"URL is longer than {MAX_URL_LENGTH} characters")
     if any(char.isspace() or not char.isprintable() for char in url):
@@ -26,4 +28,3 @@ def validate_long_url(url: str) -> str:
         raise InvalidUrl("URL must start with http:// or https://")
     if not parts.hostname:
         raise InvalidUrl("URL has no host")
-    return url

@@ -1,10 +1,13 @@
+import re
 from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
-from shorten_me.api import MAX_BODY_BYTES
-from shorten_me.app import create_app, main
+from shorten_me.aliases import InvalidAlias, validate_alias
+from shorten_me.api import MAX_BODY_BYTES, router
+from shorten_me.app import create_app
+from shorten_me.cli import main
 from shorten_me.schema import upgrade_to_head
 from shorten_me.settings import Settings
 
@@ -93,3 +96,13 @@ def test_cleanup_rejects_a_negative_grace_period(tmp_path, monkeypatch):
     monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", url)
     with pytest.raises(SystemExit, match="negative"):
         main(["cleanup", "--grace-days", "-1"])
+
+
+def test_every_single_segment_route_is_rejected_as_an_alias(client):
+    routes = [*client.app.routes, *router.routes]
+    paths = {route.path for route in routes if hasattr(route, "path")}
+    names = [path.removeprefix("/") for path in paths if re.fullmatch(r"/[^/{}]+", path)]
+    assert "docs" in names
+    for name in names:
+        with pytest.raises(InvalidAlias):
+            validate_alias(name)

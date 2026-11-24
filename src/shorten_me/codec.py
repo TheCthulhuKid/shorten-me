@@ -25,6 +25,15 @@ def encode(link_id: int) -> str:
     return code
 
 
+def is_code(text: str) -> bool:
+    """Return whether the text is a short code that `encode` could have produced."""
+    try:
+        decode(text)
+    except InvalidShortCode:
+        return False
+    return True
+
+
 def decode(code: str) -> int:
     """Return the link id for a short code, rejecting codes `encode` never produces."""
     if not code or code[0] == ALPHABET[0]:

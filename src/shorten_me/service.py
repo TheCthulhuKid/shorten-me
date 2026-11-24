@@ -1,7 +1,8 @@
 """Shorten long URLs and resolve short codes."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from sqlalchemy import ColumnElement, ScalarSelect, Select, and_, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from shorten_me.aliases import validate_alias
 from shorten_me.codec import InvalidShortCode, decode, encode
+from shorten_me.expiry import expiry_in_utc
 from shorten_me.models import Alias, Link
 from shorten_me.urls import validate_long_url
 
@@ -21,16 +23,27 @@ class LinkExpired(LookupError):
     """Raised when a short code belongs to a link whose expiry has passed."""
 
 
-class InvalidExpiry(ValueError):
-    """Raised when a requested expiry has no timezone or isn't in the future."""
-
-
-class AliasTaken(ValueError):
+class AliasTaken(Exception):
     """Raised when a custom alias already belongs to a different link."""
 
 
+class InvalidGracePeriod(ValueError):
+    """Raised when a cleanup grace period is negative or too long to subtract from now."""
+
+
+@dataclass(frozen=True)
+class ShortLink:
+    """The code handed out for a long URL, and when its link expires."""
+
+    code: str
+    expires_at: datetime | None
+
+
 class LinkService:
-    """Link operations, each committed as one unit of work on the given session."""
+    """Link operations, each committed as one unit of work on the given session.
+
+    The clock must return timezone-aware datetimes.
+    """
 
     def __init__(self, session: Session, clock: Callable[[], datetime]) -> None:
         self._session = session
@@ -38,8 +51,8 @@ class LinkService:
 
     def shorten(
         self, long_url: str, alias: str | None = None, expires_at: datetime | None = None
-    ) -> str:
-        """Return the short code for a URL, creating its link on first use.
+    ) -> ShortLink:
+        """Return the short code for a URL and its expiry, creating its link on first use.
 
         With an alias, the alias is attached to the link and returned as its code. An existing
         link's expiry is only ever pushed later, and no expiry means the link never expires.
@@ -48,14 +61,15 @@ class LinkService:
         if alias is not None:
             validate_alias(alias)
         if expires_at is not None:
-            expires_at = self._future_utc(expires_at)
-        link = self._find(long_url)
+            expires_at = expiry_in_utc(expires_at, self._clock())
+        link = self._find_by_url(long_url)
         if link is None:
             link = self._create(long_url, expires_at)
         self._extend(link, expires_at)
         code = encode(link.id) if alias is None else self._claim(alias, link)
+        short_link = ShortLink(code, link.expires_at)
         self._session.commit()
-        return code
+        return short_link
 
     def find(self, code: str) -> Link:
         """Return the link for a short code without counting a hit."""
@@ -86,11 +100,11 @@ class LinkService:
         The database deletes their aliases with them.
         """
         if grace < timedelta(0):
-            raise ValueError(f"grace period must not be negative, got {grace}")
+            raise InvalidGracePeriod(f"grace period must not be negative, got {grace}")
         try:
             cutoff = self._clock() - grace
         except OverflowError as error:
-            raise ValueError(f"grace period is too long, got {grace}") from error
+            raise InvalidGracePeriod(f"grace period is too long, got {grace}") from error
         deleted = self._session.execute(delete(Link).where(Link.expires_at < cutoff)).rowcount
         self._session.commit()
         return deleted
@@ -103,19 +117,8 @@ class LinkService:
         exists = self._session.scalar(select(Link.id).where(Link.id == _link_id(code)))
         return LinkNotFound(code) if exists is None else LinkExpired(code)
 
-    def _find(self, long_url: str) -> Link | None:
+    def _find_by_url(self, long_url: str) -> Link | None:
         return self._session.scalar(_by_url(long_url))
-
-    def _future_utc(self, expires_at: datetime) -> datetime:
-        if expires_at.tzinfo is None:
-            raise InvalidExpiry("expiry must include a timezone")
-        try:
-            expires_at = expires_at.astimezone(UTC)
-        except OverflowError as error:
-            raise InvalidExpiry("expiry is out of range") from error
-        if expires_at <= self._clock():
-            raise InvalidExpiry("expiry must be in the future")
-        return expires_at
 
     def _create(self, long_url: str, expires_at: datetime | None) -> Link:
         link = Link(long_url=long_url, created_at=self._clock(), expires_at=expires_at)
@@ -124,7 +127,7 @@ class LinkService:
                 self._session.add(link)
         except IntegrityError:
             # Another request inserted the same URL between our lookup and insert.
-            existing = self._find(long_url)
+            existing = self._find_by_url(long_url)
             if existing is None:
                 raise
             return existing

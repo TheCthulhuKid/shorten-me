@@ -1,33 +1,20 @@
-"""Build and run the web application, and the command line around it."""
+"""Build the web application."""
 
-import argparse
 import time
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
-import uvicorn
 from fastapi import FastAPI
-from sqlalchemy.orm import Session
 
 from shorten_me import api
-from shorten_me.aliases import InvalidAlias
+from shorten_me.errors import InvalidInput
 from shorten_me.ratelimit import RateLimited, RateLimiter
-from shorten_me.schema import (
-    DatabaseNotFound,
-    create_db_engine,
-    require_database,
-    upgrade_to_head,
-)
-from shorten_me.service import (
-    AliasTaken,
-    InvalidExpiry,
-    LinkExpired,
-    LinkNotFound,
-    LinkService,
-)
+from shorten_me.schema import create_db_engine, upgrade_to_head
+from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound
 from shorten_me.settings import Settings
-from shorten_me.urls import InvalidUrl
+
+RATE_LIMIT_PERIOD_SECONDS = 60
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -49,7 +36,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.engine = engine
     app.state.clock = utc_now
     app.state.rate_limiter = (
-        RateLimiter(settings.rate_limit, period=60, clock=time.monotonic)
+        RateLimiter(settings.rate_limit, RATE_LIMIT_PERIOD_SECONDS, clock=time.monotonic)
         if settings.rate_limit
         else None
     )
@@ -58,63 +45,10 @@ def create_app(settings: Settings) -> FastAPI:
     app.add_exception_handler(LinkExpired, api.link_expired)
     app.add_exception_handler(RateLimited, api.rate_limited)
     app.add_exception_handler(AliasTaken, api.alias_taken)
-    app.add_exception_handler(InvalidUrl, api.invalid_input)
-    app.add_exception_handler(InvalidAlias, api.invalid_input)
-    app.add_exception_handler(InvalidExpiry, api.invalid_input)
+    app.add_exception_handler(InvalidInput, api.invalid_input)
     return app
 
 
 def utc_now() -> datetime:
     """Return the current time in UTC."""
     return datetime.now(UTC)
-
-
-def main(argv: Sequence[str] | None = None) -> None:
-    """Run the service, or another command, with settings from the environment."""
-    parser = argparse.ArgumentParser(
-        prog="shorten-me", description="A small URL shortener. Without a command, run the service."
-    )
-    parser.set_defaults(command=serve)
-    commands = parser.add_subparsers(title="commands")
-    cleanup_parser = commands.add_parser("cleanup", help="delete links that expired long ago")
-    cleanup_parser.add_argument(
-        "--grace-days",
-        type=int,
-        default=30,
-        help="keep links for this many days after they expire (default: %(default)s)",
-    )
-    cleanup_parser.set_defaults(command=cleanup)
-    args = parser.parse_args(argv)
-    args.command(Settings(), args)
-
-
-def cleanup(settings: Settings, args: argparse.Namespace) -> None:
-    """Delete links whose expiry passed more than `--grace-days` ago."""
-    try:
-        require_database(settings.database_url)
-    except DatabaseNotFound as error:
-        raise SystemExit(f"shorten-me cleanup: {error}") from error
-    upgrade_to_head(settings.database_url)
-    engine = create_db_engine(settings.database_url)
-    try:
-        with Session(engine) as session:
-            service = LinkService(session, clock=utc_now)
-            deleted = service.delete_expired(timedelta(days=args.grace_days))
-    except OverflowError as error:
-        raise SystemExit("shorten-me cleanup: --grace-days is too large") from error
-    except ValueError as error:
-        raise SystemExit(f"shorten-me cleanup: {error}") from error
-    finally:
-        engine.dispose()
-    print(f"Expired links deleted: {deleted}")
-
-
-def serve(settings: Settings, args: argparse.Namespace) -> None:
-    """Run the web service."""
-    uvicorn.run(
-        create_app(settings),
-        host=settings.host,
-        port=settings.port,
-        proxy_headers=settings.proxy_headers,
-        forwarded_allow_ips=settings.forwarded_allow_ips,
-    )

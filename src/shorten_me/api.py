@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import AwareDatetime, BaseModel
 from sqlalchemy.orm import Session
 
+from shorten_me.errors import InvalidInput
 from shorten_me.ratelimit import RateLimited
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService
 from shorten_me.urls import MAX_URL_LENGTH
@@ -72,11 +73,11 @@ def home() -> str:
 
 @router.post("/", dependencies=[Depends(limit_rate)])
 def shorten(body: ShortenRequest, service: Service, request: Request) -> ShortenResponse:
-    code = service.shorten(body.long_url, body.alias, body.expires_at)
+    link = service.shorten(body.long_url, body.alias, body.expires_at)
     return ShortenResponse(
-        code=code,
-        short_url=str(request.url_for("follow", code=code)),
-        expires_at=service.find(code).expires_at,
+        code=link.code,
+        short_url=str(request.url_for("follow", code=link.code)),
+        expires_at=link.expires_at,
     )
 
 
@@ -122,5 +123,5 @@ def alias_taken(_request: Request, _error: AliasTaken) -> JSONResponse:
     return JSONResponse({"detail": "Alias is already in use"}, status_code=409)
 
 
-def invalid_input(_request: Request, error: ValueError) -> JSONResponse:
+def invalid_input(_request: Request, error: InvalidInput) -> JSONResponse:
     return JSONResponse({"detail": str(error)}, status_code=422)
