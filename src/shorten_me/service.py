@@ -1,9 +1,9 @@
 """Shorten long URLs and resolve short codes."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import ScalarSelect, Select, or_, select, update
+from sqlalchemy import ScalarSelect, Select, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -74,6 +74,16 @@ class LinkService:
             raise LinkExpired(code)
         self._session.commit()
         return long_url
+
+    def delete_expired(self, grace: timedelta) -> int:
+        """Delete links that expired more than `grace` ago, with their aliases; return the count."""
+        if grace < timedelta(0):
+            raise ValueError(f"grace period must not be negative, got {grace}")
+        expired = select(Link.id).where(Link.expires_at < self._clock() - grace)
+        self._session.execute(delete(Alias).where(Alias.link_id.in_(expired)))
+        deleted = self._session.execute(delete(Link).where(Link.id.in_(expired))).rowcount
+        self._session.commit()
+        return deleted
 
     def _find(self, long_url: str) -> Link | None:
         return self._session.scalar(_by_url(long_url))

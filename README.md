@@ -27,6 +27,18 @@ Settings come from environment variables:
 
 Database migrations are applied on startup.
 
+### Deleting expired links
+
+```sh
+uv run shorten-me cleanup               # links that expired more than 30 days ago
+uv run shorten-me cleanup --grace-days 7
+```
+
+Expired links answer 410 until they are deleted, then 404, and their aliases can be claimed
+again. Run the command on a schedule (cron, a systemd timer, or
+`docker run -v shorten-me-data:/data shorten-me shorten-me cleanup`); the service never
+deletes links by itself. Deleted links' codes are never handed out again.
+
 ### Behind a reverse proxy
 
 With `SHORTEN_ME_PROXY_HEADERS` on, the service takes the client address and scheme from

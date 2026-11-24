@@ -28,6 +28,7 @@ class Link(Base):
     """A long URL and how often its short code has been followed."""
 
     __tablename__ = "links"
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     long_url: Mapped[str] = mapped_column(String(MAX_URL_LENGTH), unique=True)

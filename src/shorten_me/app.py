@@ -1,19 +1,27 @@
-"""Build and run the web application."""
+"""Build and run the web application, and the command line around it."""
 
+import argparse
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import uvicorn
 from fastapi import FastAPI
 from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from shorten_me import api
 from shorten_me.aliases import InvalidAlias
 from shorten_me.ratelimit import RateLimited, RateLimiter
 from shorten_me.schema import upgrade_to_head
-from shorten_me.service import AliasTaken, InvalidExpiry, LinkExpired, LinkNotFound
+from shorten_me.service import (
+    AliasTaken,
+    InvalidExpiry,
+    LinkExpired,
+    LinkNotFound,
+    LinkService,
+)
 from shorten_me.settings import Settings
 from shorten_me.urls import InvalidUrl
 
@@ -30,7 +38,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(title="shorten-me", debug=settings.debug, lifespan=lifespan)
     app.state.engine = engine
-    app.state.clock = lambda: datetime.now(UTC)
+    app.state.clock = utc_now
     app.state.rate_limiter = (
         RateLimiter(settings.rate_limit, period=60, clock=time.monotonic)
         if settings.rate_limit
@@ -47,9 +55,45 @@ def create_app(settings: Settings) -> FastAPI:
     return app
 
 
-def main() -> None:
-    """Run the service with settings from the environment."""
-    settings = Settings()
+def utc_now() -> datetime:
+    """Return the current time in UTC."""
+    return datetime.now(UTC)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """Run the service, or another command, with settings from the environment."""
+    parser = argparse.ArgumentParser(
+        prog="shorten-me", description="A small URL shortener. Without a command, run the service."
+    )
+    parser.set_defaults(command=serve)
+    commands = parser.add_subparsers(title="commands")
+    cleanup_parser = commands.add_parser("cleanup", help="delete links that expired long ago")
+    cleanup_parser.add_argument(
+        "--grace-days",
+        type=int,
+        default=30,
+        help="keep links for this many days after they expire (default: %(default)s)",
+    )
+    cleanup_parser.set_defaults(command=cleanup)
+    args = parser.parse_args(argv)
+    args.command(Settings(), args)
+
+
+def cleanup(settings: Settings, args: argparse.Namespace) -> None:
+    """Delete links whose expiry passed more than `--grace-days` ago."""
+    upgrade_to_head(settings.database_url)
+    engine = create_engine(settings.database_url)
+    try:
+        with Session(engine) as session:
+            service = LinkService(session, clock=utc_now)
+            deleted = service.delete_expired(timedelta(days=args.grace_days))
+    finally:
+        engine.dispose()
+    print(f"Expired links deleted: {deleted}")
+
+
+def serve(settings: Settings, args: argparse.Namespace) -> None:
+    """Run the web service."""
     uvicorn.run(
         create_app(settings),
         host=settings.host,

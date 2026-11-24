@@ -1,8 +1,9 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
-from shorten_me.models import Link
+from shorten_me.models import Alias, Link
 from shorten_me.service import LinkExpired, LinkService
 
 
@@ -48,3 +49,25 @@ def test_shortening_again_never_brings_the_expiry_forward(service):
     code = service.shorten("https://example.com/a", expires_at=datetime(2027, 1, 1, tzinfo=UTC))
     service.shorten("https://example.com/a", expires_at=datetime(2026, 6, 1, tzinfo=UTC))
     assert service.find(code).expires_at == datetime(2027, 1, 1)
+
+
+def test_cleanup_deletes_only_links_expired_longer_than_the_grace_period(session):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    service = LinkService(session, clock=lambda: now)
+    service.shorten("https://example.com/old", "old-link", datetime(2026, 1, 2, tzinfo=UTC))
+    service.shorten("https://example.com/recent", expires_at=datetime(2026, 1, 20, tzinfo=UTC))
+    service.shorten("https://example.com/forever")
+    now = datetime(2026, 2, 1, tzinfo=UTC)
+    assert service.delete_expired(timedelta(days=14)) == 1
+    remaining = session.scalars(select(Link.long_url).order_by(Link.id)).all()
+    assert remaining == ["https://example.com/recent", "https://example.com/forever"]
+    assert session.query(Alias).count() == 0
+
+
+def test_codes_of_deleted_links_are_not_reused(session):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    service = LinkService(session, clock=lambda: now)
+    code = service.shorten("https://example.com/old", expires_at=datetime(2026, 1, 2, tzinfo=UTC))
+    now = datetime(2026, 2, 1, tzinfo=UTC)
+    service.delete_expired(timedelta(0))
+    assert service.shorten("https://example.com/new") != code
