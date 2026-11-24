@@ -39,6 +39,9 @@ again. Run the command on a schedule (cron, a systemd timer, or
 `docker run -v shorten-me-data:/data shorten-me shorten-me cleanup`); the service never
 deletes links by itself. Deleted links' codes are never handed out again.
 
+The command exits with an error if the SQLite file in `SHORTEN_ME_DATABASE_URL` doesn't
+exist. The default URL is relative to the working directory, so give cron an absolute path.
+
 ### Behind a reverse proxy
 
 With `SHORTEN_ME_PROXY_HEADERS` on, the service takes the client address and scheme from
@@ -78,7 +81,7 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   for all its codes and aliases. Posting the URL again only moves its expiry later, and
   posting without `expires_at` makes it permanent, so a request can't cut short a link that
   someone else holds; this also revives an expired link. `expires_at` in the response is the
-  expiry that applies, in UTC (`null` for never).
+  expiry that applies (`null` for never). All times in responses are in UTC and end in `Z`.
 * `POST /` with a body over 25 KB returns 413.
 * `POST /` is rate limited per client IP address: a client can make `SHORTEN_ME_RATE_LIMIT`
   requests in a burst, and gets them back evenly over a minute. Beyond that it returns 429

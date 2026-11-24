@@ -15,7 +15,7 @@ def test_shortening_the_same_url_twice_returns_the_same_code(service, session):
 
 def test_new_link_records_the_time_from_the_clock(service, session):
     service.shorten("https://example.com/a")
-    assert session.query(Link).one().created_at == datetime(2026, 1, 1)
+    assert session.query(Link).one().created_at == datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def test_following_a_short_link_counts_a_hit(service, session):
@@ -48,7 +48,7 @@ def test_expired_link_no_longer_resolves(session):
 def test_shortening_again_never_brings_the_expiry_forward(service):
     code = service.shorten("https://example.com/a", expires_at=datetime(2027, 1, 1, tzinfo=UTC))
     service.shorten("https://example.com/a", expires_at=datetime(2026, 6, 1, tzinfo=UTC))
-    assert service.find(code).expires_at == datetime(2027, 1, 1)
+    assert service.find(code).expires_at == datetime(2027, 1, 1, tzinfo=UTC)
 
 
 def test_cleanup_deletes_only_links_expired_longer_than_the_grace_period(session):

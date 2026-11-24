@@ -92,7 +92,6 @@ class LinkService:
         if expires_at.tzinfo is None:
             raise InvalidExpiry("expiry must include a timezone")
         try:
-            # SQLite stores datetimes without their offset, so all of them must be in UTC.
             expires_at = expires_at.astimezone(UTC)
         except OverflowError as error:
             raise InvalidExpiry("expiry is out of range") from error
@@ -115,11 +114,7 @@ class LinkService:
         extend = update(Link).where(Link.id == link.id, Link.expires_at.is_not(None))
         if expires_at is not None:
             extend = extend.where(Link.expires_at < expires_at)
-        # SQLite loads expires_at without a timezone, so the ORM can't evaluate the WHERE in
-        # Python against the session's objects; read the updated rows back instead.
-        self._session.execute(
-            extend.values(expires_at=expires_at), execution_options={"synchronize_session": "fetch"}
-        )
+        self._session.execute(extend.values(expires_at=expires_at))
 
     def _claim(self, alias: str, link: Link) -> str:
         try:

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from shorten_me import api
 from shorten_me.aliases import InvalidAlias
 from shorten_me.ratelimit import RateLimited, RateLimiter
-from shorten_me.schema import upgrade_to_head
+from shorten_me.schema import DatabaseNotFound, require_database, upgrade_to_head
 from shorten_me.service import (
     AliasTaken,
     InvalidExpiry,
@@ -86,6 +86,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 def cleanup(settings: Settings, args: argparse.Namespace) -> None:
     """Delete links whose expiry passed more than `--grace-days` ago."""
+    try:
+        require_database(settings.database_url)
+    except DatabaseNotFound as error:
+        raise SystemExit(f"shorten-me cleanup: {error}") from error
     upgrade_to_head(settings.database_url)
     engine = create_engine(settings.database_url)
     try:

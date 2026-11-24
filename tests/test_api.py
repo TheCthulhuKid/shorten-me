@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from shorten_me.api import MAX_BODY_BYTES
-from shorten_me.app import create_app
+from shorten_me.app import create_app, main
 from shorten_me.settings import Settings
 
 
@@ -64,3 +64,15 @@ def test_oversized_request_body_returns_413(client):
     assert client.post("/", json={"long_url": long_url}).status_code == 413
     chunks = (chunk for chunk in [b'{"long_url": "', long_url.encode(), b'"}'])
     assert client.post("/", content=chunks).status_code == 413
+
+
+def test_times_in_responses_are_in_utc_with_an_offset(client):
+    body = {"long_url": "https://example.com/a", "expires_at": "2999-01-01T12:00:00+02:00"}
+    assert client.post("/", json=body).json()["expires_at"] == "2999-01-01T10:00:00Z"
+
+
+def test_cleanup_refuses_a_database_that_does_not_exist(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", f"sqlite:///{tmp_path / 'missing.db'}")
+    with pytest.raises(SystemExit, match="missing.db"):
+        main(["cleanup"])
+    assert not (tmp_path / "missing.db").exists()
