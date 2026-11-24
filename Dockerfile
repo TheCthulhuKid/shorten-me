@@ -1,5 +1,5 @@
-FROM python:3.15-slim AS builder
-COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /bin/
+FROM python:3.15-slim@sha256:1c670c3568107e243bfd05457ad9ca0b11c35a855c985af73e4452db9a714e70 AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /uvx /bin/
 
 ENV UV_PYTHON_DOWNLOADS=0 \
     UV_NO_DEV=1 \
@@ -18,7 +18,7 @@ COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-editable
 
-FROM python:3.15-slim
+FROM python:3.15-slim@sha256:1c670c3568107e243bfd05457ad9ca0b11c35a855c985af73e4452db9a714e70
 
 RUN useradd --system --no-create-home app \
     && mkdir /data \

@@ -1,6 +1,9 @@
 """HTTP routes."""
 
+import base64
+import hashlib
 import math
+import re
 from collections.abc import Iterator
 from datetime import datetime
 from importlib import resources
@@ -12,7 +15,7 @@ from pydantic import AwareDatetime, BaseModel
 
 from shorten_me.aliases import ALIAS_PATTERN
 from shorten_me.errors import InvalidInput
-from shorten_me.ratelimit import RateLimited
+from shorten_me.ratelimit import RateLimited, client_key
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService, open_service
 from shorten_me.urls import MAX_URL_LENGTH
 
@@ -20,6 +23,24 @@ router = APIRouter()
 MAX_BODY_BYTES = 12 * MAX_URL_LENGTH + 1024
 _HOME_TEMPLATE = resources.files("shorten_me").joinpath("static/index.html").read_text()
 HOME_PAGE = _HOME_TEMPLATE.replace("__ALIAS_PATTERN__", ALIAS_PATTERN.pattern)
+
+
+def _inline_hash(tag: str) -> str:
+    content = re.search(rf"<{tag}>(.*?)</{tag}>", HOME_PAGE, re.DOTALL).group(1)
+    digest = hashlib.sha256(content.encode()).digest()
+    return f"'sha256-{base64.b64encode(digest).decode()}'"
+
+
+HOME_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        f"script-src {_inline_hash('script')}; "
+        f"style-src {_inline_hash('style')}; "
+        "connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 
 
 class ShortenRequest(BaseModel):
@@ -50,7 +71,8 @@ class LinkStats(BaseModel):
 
 def get_service(request: Request) -> Iterator[LinkService]:
     """Give each request its own session."""
-    with open_service(request.app.state.engine, request.app.state.clock) as service:
+    state = request.app.state
+    with open_service(state.engine, state.clock, state.public_url) as service:
         yield service
 
 
@@ -64,12 +86,12 @@ def limit_rate(request: Request) -> None:
         return
     if request.client is None:
         raise RuntimeError("the server gave no client address to rate limit by")
-    limiter.take(request.client.host)
+    limiter.take(client_key(request.client.host))
 
 
-@router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def home() -> str:
-    return HOME_PAGE
+@router.get("/", include_in_schema=False)
+def home() -> HTMLResponse:
+    return HTMLResponse(HOME_PAGE, headers=HOME_HEADERS)
 
 
 @router.post("/", dependencies=[Depends(limit_rate)])
@@ -77,9 +99,16 @@ def shorten(body: ShortenRequest, service: Service, request: Request) -> Shorten
     link = service.shorten(body.long_url, body.alias, body.expires_at)
     return ShortenResponse(
         code=link.code,
-        short_url=str(request.url_for("follow", code=link.code)),
+        short_url=_short_url(request, link.code),
         expires_at=link.expires_at,
     )
+
+
+def _short_url(request: Request, code: str) -> str:
+    public_url = request.app.state.public_url
+    if public_url is None:
+        return str(request.url_for("follow", code=code))
+    return f"{public_url}/{code}"
 
 
 @router.get("/{code}", response_class=RedirectResponse)

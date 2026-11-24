@@ -20,7 +20,7 @@ Settings come from environment variables:
 | `SHORTEN_ME_DATABASE_URL` | `sqlite:///shorten_me.db` |
 | `SHORTEN_ME_HOST` | `127.0.0.1` |
 | `SHORTEN_ME_PORT` | `8000` |
-| `SHORTEN_ME_DEBUG` | `false` |
+| `SHORTEN_ME_PUBLIC_URL` | unset (the address clients reach the service at, such as `https://sho.rt`) |
 | `SHORTEN_ME_RATE_LIMIT` | `10` (links per client per minute; `0` turns it off) |
 | `SHORTEN_ME_PROXY_HEADERS` | `true` |
 | `SHORTEN_ME_FORWARDED_ALLOW_IPS` | `127.0.0.1,::1` |
@@ -44,11 +44,16 @@ exist. The default URL is relative to the working directory, so give cron an abs
 
 ### Behind a reverse proxy
 
+Set `SHORTEN_ME_PUBLIC_URL` to the address clients use. `short_url` is then built from it,
+whatever `Host` header a request carries, and links that point back at the service are
+refused. Without it, `short_url` follows the request's `Host` header and scheme.
+
 With `SHORTEN_ME_PROXY_HEADERS` on, the service takes the client address and scheme from
 `X-Forwarded-For` and `X-Forwarded-Proto`, but only from the addresses in
 `SHORTEN_ME_FORWARDED_ALLOW_IPS` (comma-separated IPs or networks, or `*` for any). The rate
-limit and the scheme of `short_url` depend on this. The host of `short_url` comes from the
-`Host` header, so the proxy must pass it through (in nginx, `proxy_set_header Host $host`).
+limit depends on this, and so does `short_url` when `SHORTEN_ME_PUBLIC_URL` is unset: its
+scheme comes from `X-Forwarded-Proto` and its host from the `Host` header, which the proxy
+must then pass through (in nginx, `proxy_set_header Host $host`).
 A proxy outside the container, as with Docker, isn't on `127.0.0.1`, so set
 `SHORTEN_ME_FORWARDED_ALLOW_IPS` to its address.
 
@@ -65,11 +70,17 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
 ## API
 
 * `GET /` returns the HTML form. It posts to `POST /` and converts the expiry from the
-  browser's local time to UTC.
+  browser's local time to UTC. The page is served with a Content-Security-Policy that only
+  allows its own inline script and stylesheet, so editing `static/index.html` needs no extra
+  step: the hashes are computed when the service starts.
 * `POST /` with a JSON body `{"long_url": "https://..."}` returns
   `{"code": ..., "short_url": ..., "expires_at": ...}`.
-  Shortening the same URL again returns the same code. A URL that isn't http(s), is longer
-  than 2048 characters, or contains whitespace or control characters returns 422.
+  Shortening the same URL again returns the same code. A URL returns 422 if it isn't
+  http(s), is longer than 2048 characters, contains whitespace or control characters, carries a username or
+  password, or points to `localhost` or a private, loopback or otherwise non-public IP
+  address. Hostnames aren't looked up, so a name that resolves to a private address is
+  accepted. With `SHORTEN_ME_PUBLIC_URL` set, a URL on the service's own address is refused
+  too.
 * `POST /` with `{"long_url": "https://...", "alias": "my-link"}` uses the alias as the code.
   A link keeps its generated code, and can have several aliases that share its hit count.
   Posting the same URL and alias again returns 200; an alias that belongs to another URL
@@ -83,9 +94,10 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   someone else holds; this also revives an expired link. `expires_at` in the response is the
   expiry that applies (`null` for never). All times in responses are in UTC and end in `Z`.
 * `POST /` with a body over 25 KB returns 413.
-* `POST /` is rate limited per client IP address: a client can make `SHORTEN_ME_RATE_LIMIT`
-  requests in a burst, and gets them back evenly over a minute. Beyond that it returns 429
-  with a `Retry-After` header in seconds. Redirects and stats aren't limited.
+* `POST /` is rate limited per client IP address (per /64 network for IPv6): a client can
+  make `SHORTEN_ME_RATE_LIMIT` requests in a burst, and gets them back evenly over a minute.
+  Beyond that it returns 429 with a `Retry-After` header in seconds. Redirects and stats
+  aren't limited.
 * `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404;
   expired links return 410. `HEAD /{code}` answers the same way without counting a hit.
 * `GET /{code}/stats` returns the long URL, hit count, creation time and expiry (UTC)

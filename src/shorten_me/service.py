@@ -53,12 +53,16 @@ class ShortLink:
 class LinkService:
     """Link operations, each committed as one unit of work on the given session.
 
-    The clock must return timezone-aware datetimes.
+    The clock must return timezone-aware datetimes. With `public_url`, the address clients
+    reach this service at, links that point back at the service are refused.
     """
 
-    def __init__(self, session: Session, clock: Callable[[], datetime]) -> None:
+    def __init__(
+        self, session: Session, clock: Callable[[], datetime], public_url: str | None = None
+    ) -> None:
         self._session = session
         self._clock = clock
+        self._public_url = public_url
 
     def shorten(
         self, long_url: str, alias: str | None = None, expires_at: datetime | None = None
@@ -68,7 +72,7 @@ class LinkService:
         With an alias, the alias is attached to the link and returned as its code. An existing
         link's expiry is only ever pushed later, and no expiry means the link never expires.
         """
-        validate_long_url(long_url)
+        validate_long_url(long_url, own_url=self._public_url)
         if alias is not None:
             validate_alias(alias)
         if expires_at is not None:
@@ -166,10 +170,12 @@ class LinkService:
 
 
 @contextmanager
-def open_service(engine: Engine, clock: Callable[[], datetime]) -> Iterator[LinkService]:
+def open_service(
+    engine: Engine, clock: Callable[[], datetime], public_url: str | None = None
+) -> Iterator[LinkService]:
     """Yield a `LinkService` on a session of its own, closed afterwards."""
     with Session(engine) as session:
-        yield LinkService(session, clock)
+        yield LinkService(session, clock, public_url)
 
 
 def _link_id(code: str) -> int | ScalarSelect[int]:

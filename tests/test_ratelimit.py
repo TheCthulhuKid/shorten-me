@@ -1,6 +1,6 @@
 import pytest
 
-from shorten_me.ratelimit import RateLimited, RateLimiter
+from shorten_me.ratelimit import RateLimited, RateLimiter, client_key
 
 
 def test_requests_over_the_limit_are_refused():
@@ -19,3 +19,8 @@ def test_limit_allows_requests_again_after_waiting():
     limiter.take("client")
     now = 60.0
     limiter.take("client")
+
+
+def test_ipv6_clients_in_the_same_network_share_a_limit():
+    assert client_key("2001:db8:1:2::1") == client_key("2001:db8:1:2:ffff::9")
+    assert client_key("2001:db8:1:2::1") != client_key("2001:db8:1:3::1")

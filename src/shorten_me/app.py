@@ -27,13 +27,13 @@ def create_app(settings: Settings) -> FastAPI:
 
     app = FastAPI(
         title="shorten-me",
-        debug=settings.debug,
         lifespan=lifespan,
         max_body_size=api.MAX_BODY_BYTES,
         exception_handlers=api.EXCEPTION_HANDLERS,
     )
     app.state.engine = engine
     app.state.clock = utc_now
+    app.state.public_url = settings.public_url and str(settings.public_url).rstrip("/")
     app.state.rate_limiter = (
         RateLimiter(settings.rate_limit, RATE_LIMIT_PERIOD_SECONDS, clock=time.monotonic)
         if settings.rate_limit

@@ -61,6 +61,7 @@ def test_home_page_serves_the_form(client):
     assert response.headers["content-type"].startswith("text/html")
     assert '<form id="shorten">' in response.text
     assert f'pattern="{ALIAS_PATTERN.pattern}"' in response.text
+    assert "script-src 'sha256-" in response.headers["content-security-policy"]
 
 
 def test_oversized_request_body_returns_413(client):
@@ -91,3 +92,11 @@ def test_every_single_segment_route_is_rejected_as_an_alias(client):
     for name in names:
         with pytest.raises(InvalidAlias):
             validate_alias(name)
+
+
+def test_short_url_uses_the_public_url_instead_of_the_host_header(database_url):
+    settings = Settings(database_url=database_url, public_url="https://sho.rt")
+    with TestClient(create_app(settings)) as client:
+        body = {"long_url": "https://example.com/a"}
+        response = client.post("/", json=body, headers={"Host": "evil.example"})
+    assert response.json()["short_url"] == "https://sho.rt/p"
