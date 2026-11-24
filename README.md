@@ -87,7 +87,7 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   requests in a burst, and gets them back evenly over a minute. Beyond that it returns 429
   with a `Retry-After` header in seconds. Redirects and stats aren't limited.
 * `GET /{code}` redirects (307) to the long URL and counts a hit. Unknown codes return 404;
-  expired links return 410.
+  expired links return 410. `HEAD /{code}` answers the same way without counting a hit.
 * `GET /{code}/stats` returns the long URL, hit count, creation time and expiry (UTC)
   without counting a hit. It works for expired links too.
 
@@ -126,6 +126,10 @@ The `links` table uses SQLite's `AUTOINCREMENT`, so the short code of a deleted 
 handed out again. Autogenerate can't see that option, and a batch migration that rebuilds
 `links` drops it unless it passes `table_kwargs={"sqlite_autoincrement": True}` to
 `batch_alter_table`. A test fails if a migration loses it.
+
+The service enforces foreign keys on SQLite (`create_db_engine`), so deleting a link deletes
+its aliases. Migrations run without that, because SQLite can't rebuild a table that other
+rows reference while foreign keys are enforced.
 
 CI runs the same checks and builds the Docker image on every push to `master` and every
 pull request.

@@ -1,14 +1,30 @@
-"""Bring a database up to the latest schema."""
+"""Connect to a database and bring it up to the latest schema."""
 
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import make_url
+from sqlalchemy import Engine, create_engine, event, make_url
+from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.pool import ConnectionPoolEntry
 
 
 class DatabaseNotFound(FileNotFoundError):
     """Raised when a SQLite database file doesn't exist and connecting would create it."""
+
+
+def create_db_engine(database_url: str) -> Engine:
+    """Return an engine that enforces foreign keys, which SQLite only does when asked."""
+    engine = create_engine(database_url)
+    if engine.dialect.name == "sqlite":
+        event.listen(engine, "connect", _enforce_foreign_keys)
+    return engine
+
+
+def _enforce_foreign_keys(connection: DBAPIConnection, _record: ConnectionPoolEntry) -> None:
+    cursor = connection.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.close()
 
 
 def alembic_config(database_url: str) -> Config:

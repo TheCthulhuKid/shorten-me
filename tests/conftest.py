@@ -2,10 +2,10 @@ import gc
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from shorten_me.models import Base
+from shorten_me.schema import create_db_engine
 from shorten_me.service import LinkService
 
 
@@ -18,7 +18,7 @@ def collect_garbage():
 
 @pytest.fixture
 def session():
-    engine = create_engine("sqlite://")
+    engine = create_db_engine("sqlite://")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         yield session

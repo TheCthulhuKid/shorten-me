@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import ScalarSelect, Select, delete, or_, select, update
+from sqlalchemy import ColumnElement, ScalarSelect, Select, and_, delete, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -66,24 +66,42 @@ class LinkService:
 
     def resolve(self, code: str) -> str:
         """Count a hit on a short code and return its long URL, if the link hasn't expired."""
-        live = or_(Link.expires_at.is_(None), Link.expires_at > self._clock())
-        count_hit = update(Link).where(Link.id == _link_id(code), live).values(hits=Link.hits + 1)
+        count_hit = update(Link).where(self._is_live(code)).values(hits=Link.hits + 1)
         long_url = self._session.scalar(count_hit.returning(Link.long_url))
         if long_url is None:
-            self.find(code)
-            raise LinkExpired(code)
+            raise self._why_not_live(code)
         self._session.commit()
         return long_url
 
+    def preview(self, code: str) -> str:
+        """Return a short code's long URL without counting a hit, if the link hasn't expired."""
+        long_url = self._session.scalar(select(Link.long_url).where(self._is_live(code)))
+        if long_url is None:
+            raise self._why_not_live(code)
+        return long_url
+
     def delete_expired(self, grace: timedelta) -> int:
-        """Delete links that expired more than `grace` ago, with their aliases; return the count."""
+        """Delete links that expired more than `grace` ago and return the count.
+
+        The database deletes their aliases with them.
+        """
         if grace < timedelta(0):
             raise ValueError(f"grace period must not be negative, got {grace}")
-        expired = select(Link.id).where(Link.expires_at < self._clock() - grace)
-        self._session.execute(delete(Alias).where(Alias.link_id.in_(expired)))
-        deleted = self._session.execute(delete(Link).where(Link.id.in_(expired))).rowcount
+        try:
+            cutoff = self._clock() - grace
+        except OverflowError as error:
+            raise ValueError(f"grace period is too long, got {grace}") from error
+        deleted = self._session.execute(delete(Link).where(Link.expires_at < cutoff)).rowcount
         self._session.commit()
         return deleted
+
+    def _is_live(self, code: str) -> ColumnElement[bool]:
+        not_expired = or_(Link.expires_at.is_(None), Link.expires_at > self._clock())
+        return and_(Link.id == _link_id(code), not_expired)
+
+    def _why_not_live(self, code: str) -> LookupError:
+        exists = self._session.scalar(select(Link.id).where(Link.id == _link_id(code)))
+        return LinkNotFound(code) if exists is None else LinkExpired(code)
 
     def _find(self, long_url: str) -> Link | None:
         return self._session.scalar(_by_url(long_url))
@@ -106,7 +124,10 @@ class LinkService:
                 self._session.add(link)
         except IntegrityError:
             # Another request inserted the same URL between our lookup and insert.
-            return self._session.scalars(_by_url(long_url)).one()
+            existing = self._find(long_url)
+            if existing is None:
+                raise
+            return existing
         return link
 
     def _extend(self, link: Link, expires_at: datetime | None) -> None:
@@ -122,7 +143,10 @@ class LinkService:
                 self._session.add(Alias(name=alias, link_id=link.id))
         except IntegrityError:
             # The alias exists, possibly inserted by a concurrent request for the same URL.
-            if self._session.get_one(Alias, alias).link_id != link.id:
+            existing = self._session.get(Alias, alias)
+            if existing is None:
+                raise
+            if existing.link_id != link.id:
                 raise AliasTaken(alias) from None
         return alias
 

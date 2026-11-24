@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from shorten_me.api import MAX_BODY_BYTES
 from shorten_me.app import create_app, main
+from shorten_me.schema import upgrade_to_head
 from shorten_me.settings import Settings
 
 
@@ -76,3 +77,19 @@ def test_cleanup_refuses_a_database_that_does_not_exist(tmp_path, monkeypatch):
     with pytest.raises(SystemExit, match="missing.db"):
         main(["cleanup"])
     assert not (tmp_path / "missing.db").exists()
+
+
+def test_head_request_redirects_without_counting_a_hit(client):
+    code = client.post("/", json={"long_url": "https://example.com/a"}).json()["code"]
+    response = client.head(f"/{code}")
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.com/a"
+    assert client.get(f"/{code}/stats").json()["hits"] == 0
+
+
+def test_cleanup_rejects_a_negative_grace_period(tmp_path, monkeypatch):
+    url = f"sqlite:///{tmp_path / 'test.db'}"
+    upgrade_to_head(url)
+    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", url)
+    with pytest.raises(SystemExit, match="negative"):
+        main(["cleanup", "--grace-days", "-1"])

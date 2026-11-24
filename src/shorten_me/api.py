@@ -85,6 +85,11 @@ def follow(code: str, service: Service) -> str:
     return service.resolve(code)
 
 
+@router.head("/{code}", response_class=RedirectResponse, include_in_schema=False)
+def preview(code: str, service: Service) -> str:
+    return service.preview(code)
+
+
 @router.get("/{code}/stats")
 def stats(code: str, service: Service) -> LinkStats:
     link = service.find(code)
@@ -97,15 +102,15 @@ def stats(code: str, service: Service) -> LinkStats:
     )
 
 
-def link_not_found(request: Request, error: LinkNotFound) -> JSONResponse:
+def link_not_found(_request: Request, _error: LinkNotFound) -> JSONResponse:
     return JSONResponse({"detail": "Short URL not found"}, status_code=404)
 
 
-def link_expired(request: Request, error: LinkExpired) -> JSONResponse:
+def link_expired(_request: Request, _error: LinkExpired) -> JSONResponse:
     return JSONResponse({"detail": "Short URL has expired"}, status_code=410)
 
 
-def rate_limited(request: Request, error: RateLimited) -> JSONResponse:
+def rate_limited(_request: Request, error: RateLimited) -> JSONResponse:
     return JSONResponse(
         {"detail": "Too many requests"},
         status_code=429,
@@ -113,9 +118,9 @@ def rate_limited(request: Request, error: RateLimited) -> JSONResponse:
     )
 
 
-def alias_taken(request: Request, error: AliasTaken) -> JSONResponse:
+def alias_taken(_request: Request, _error: AliasTaken) -> JSONResponse:
     return JSONResponse({"detail": "Alias is already in use"}, status_code=409)
 
 
-def invalid_input(request: Request, error: ValueError) -> JSONResponse:
+def invalid_input(_request: Request, error: ValueError) -> JSONResponse:
     return JSONResponse({"detail": str(error)}, status_code=422)

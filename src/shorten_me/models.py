@@ -68,4 +68,4 @@ class Alias(Base):
     __tablename__ = "aliases"
 
     name: Mapped[str] = mapped_column(String(MAX_ALIAS_LENGTH), primary_key=True)
-    link_id: Mapped[int] = mapped_column(ForeignKey(Link.id))
+    link_id: Mapped[int] = mapped_column(ForeignKey(Link.id, ondelete="CASCADE"), index=True)

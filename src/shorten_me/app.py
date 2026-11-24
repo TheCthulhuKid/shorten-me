@@ -8,13 +8,17 @@ from datetime import UTC, datetime, timedelta
 
 import uvicorn
 from fastapi import FastAPI
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from shorten_me import api
 from shorten_me.aliases import InvalidAlias
 from shorten_me.ratelimit import RateLimited, RateLimiter
-from shorten_me.schema import DatabaseNotFound, require_database, upgrade_to_head
+from shorten_me.schema import (
+    DatabaseNotFound,
+    create_db_engine,
+    require_database,
+    upgrade_to_head,
+)
 from shorten_me.service import (
     AliasTaken,
     InvalidExpiry,
@@ -28,7 +32,7 @@ from shorten_me.urls import InvalidUrl
 
 def create_app(settings: Settings) -> FastAPI:
     """Return the application wired to the database in `settings`."""
-    engine = create_engine(settings.database_url)
+    engine = create_db_engine(settings.database_url)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -91,11 +95,15 @@ def cleanup(settings: Settings, args: argparse.Namespace) -> None:
     except DatabaseNotFound as error:
         raise SystemExit(f"shorten-me cleanup: {error}") from error
     upgrade_to_head(settings.database_url)
-    engine = create_engine(settings.database_url)
+    engine = create_db_engine(settings.database_url)
     try:
         with Session(engine) as session:
             service = LinkService(session, clock=utc_now)
             deleted = service.delete_expired(timedelta(days=args.grace_days))
+    except OverflowError as error:
+        raise SystemExit("shorten-me cleanup: --grace-days is too large") from error
+    except ValueError as error:
+        raise SystemExit(f"shorten-me cleanup: {error}") from error
     finally:
         engine.dispose()
     print(f"Expired links deleted: {deleted}")
