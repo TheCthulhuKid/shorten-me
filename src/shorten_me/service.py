@@ -67,20 +67,20 @@ class LinkService:
     def shorten(
         self, long_url: str, alias: str | None = None, expires_at: datetime | None = None
     ) -> ShortLink:
-        """Return the short code for a URL and its expiry, creating its link on first use.
+        """Return a short code for a URL, and when its link expires.
 
-        With an alias, the alias is attached to the link and returned as its code. An existing
-        link's expiry is only ever pushed later, and no expiry means the link never expires.
+        Without an expiry, the URL's one permanent link is used, and created on first use. With
+        an expiry, the request gets a link of its own, which later requests can't change. With
+        an alias, the alias is attached to the link and returned as its code.
         """
         validate_long_url(long_url, own_url=self._public_url)
         if alias is not None:
             validate_alias(alias)
         if expires_at is not None:
             expires_at = expiry_in_utc(expires_at, self._clock())
-        link = self._find_by_url(long_url)
+        link = self._find_reusable(long_url, alias, expires_at)
         if link is None:
             link = self._create(long_url, expires_at)
-        self._extend(link, expires_at)
         code = encode(link.id) if alias is None else self._claim(alias, link)
         short_link = ShortLink(code, link.expires_at)
         self._session.commit()
@@ -132,8 +132,17 @@ class LinkService:
         exists = self._session.scalar(select(Link.id).where(Link.id == _link_id(code)))
         return LinkNotFound(code) if exists is None else LinkExpired(code)
 
-    def _find_by_url(self, long_url: str) -> Link | None:
-        return self._session.scalar(_by_url(long_url))
+    def _find_reusable(
+        self, long_url: str, alias: str | None, expires_at: datetime | None
+    ) -> Link | None:
+        if expires_at is None:
+            return self._find_permanent(long_url)
+        # Repeating a request with an alias finds the link it made, instead of a 409.
+        made_before = _by_url(long_url, expires_at).join(Alias).where(Alias.name == alias)
+        return self._session.scalar(made_before)
+
+    def _find_permanent(self, long_url: str) -> Link | None:
+        return self._session.scalar(_by_url(long_url, expires_at=None))
 
     def _create(self, long_url: str, expires_at: datetime | None) -> Link:
         link = Link(long_url=long_url, created_at=self._clock(), expires_at=expires_at)
@@ -141,19 +150,12 @@ class LinkService:
             with self._session.begin_nested():
                 self._session.add(link)
         except IntegrityError:
-            # Another request inserted the same URL between our lookup and insert.
-            existing = self._find_by_url(long_url)
+            # Another request inserted the URL's permanent link between our lookup and insert.
+            existing = self._find_permanent(long_url)
             if existing is None:
                 raise
             return existing
         return link
-
-    def _extend(self, link: Link, expires_at: datetime | None) -> None:
-        # A single conditional UPDATE, so concurrent requests can't move the expiry earlier.
-        extend = update(Link).where(Link.id == link.id, Link.expires_at.is_not(None))
-        if expires_at is not None:
-            extend = extend.where(Link.expires_at < expires_at)
-        self._session.execute(extend.values(expires_at=expires_at))
 
     def _claim(self, alias: str, link: Link) -> str:
         try:
@@ -186,5 +188,6 @@ def _link_id(code: str) -> int | ScalarSelect[int]:
         return select(Alias.link_id).where(Alias.name == code).scalar_subquery()
 
 
-def _by_url(long_url: str) -> Select[tuple[Link]]:
-    return select(Link).where(Link.long_url == long_url)
+def _by_url(long_url: str, expires_at: datetime | None) -> Select[tuple[Link]]:
+    same_expiry = Link.expires_at.is_(None) if expires_at is None else Link.expires_at == expires_at
+    return select(Link).where(Link.long_url == long_url, same_expiry)

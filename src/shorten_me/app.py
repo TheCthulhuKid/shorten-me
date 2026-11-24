@@ -34,13 +34,16 @@ def create_app(settings: Settings) -> FastAPI:
     app.state.engine = engine
     app.state.clock = utc_now
     app.state.public_url = settings.public_url and str(settings.public_url).rstrip("/")
-    app.state.rate_limiter = (
-        RateLimiter(settings.rate_limit, RATE_LIMIT_PERIOD_SECONDS, clock=time.monotonic)
-        if settings.rate_limit
-        else None
-    )
+    app.state.creation_limiter = _limiter(settings.rate_limit)
+    app.state.lookup_limiter = _limiter(settings.lookup_rate_limit)
     app.include_router(api.router)
     return app
+
+
+def _limiter(per_minute: int) -> RateLimiter | None:
+    if per_minute == 0:
+        return None
+    return RateLimiter(per_minute, RATE_LIMIT_PERIOD_SECONDS, clock=time.monotonic)
 
 
 def utc_now() -> datetime:

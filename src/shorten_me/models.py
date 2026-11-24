@@ -2,7 +2,16 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Dialect, ForeignKey, MetaData, String, TypeDecorator
+from sqlalchemy import (
+    DateTime,
+    Dialect,
+    ForeignKey,
+    Index,
+    MetaData,
+    String,
+    TypeDecorator,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from shorten_me.aliases import MAX_ALIAS_LENGTH
@@ -50,13 +59,25 @@ class UtcDateTime(TypeDecorator[datetime]):
 
 
 class Link(Base):
-    """A long URL and how often its short code has been followed."""
+    """A long URL and how often its short code has been followed.
+
+    A URL has at most one permanent link, and any number of links that expire.
+    """
 
     __tablename__ = "links"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (
+        Index(
+            "uq_links_permanent_long_url",
+            "long_url",
+            unique=True,
+            sqlite_where=text("expires_at IS NULL"),
+            postgresql_where=text("expires_at IS NULL"),
+        ),
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    long_url: Mapped[str] = mapped_column(String(MAX_URL_LENGTH), unique=True)
+    long_url: Mapped[str] = mapped_column(String(MAX_URL_LENGTH))
     hits: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime)

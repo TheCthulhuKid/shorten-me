@@ -55,6 +55,13 @@ def test_too_many_requests_return_429_with_retry_after(database_url):
     assert 0 < int(response.headers["retry-after"]) <= 60
 
 
+def test_too_many_lookups_return_429(database_url):
+    settings = Settings(database_url=database_url, lookup_rate_limit=1)
+    with TestClient(create_app(settings)) as client:
+        client.get("/vcTJ")
+        assert client.get("/vcTJ").status_code == 429
+
+
 def test_home_page_serves_the_form(client):
     response = client.get("/")
     assert response.status_code == 200

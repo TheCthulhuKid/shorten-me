@@ -15,7 +15,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from shorten_me.aliases import ALIAS_PATTERN
 from shorten_me.errors import InvalidInput
-from shorten_me.ratelimit import RateLimited, client_key
+from shorten_me.ratelimit import RateLimited, RateLimiter, client_key
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService, open_service
 from shorten_me.urls import MAX_URL_LENGTH
 
@@ -86,9 +86,17 @@ def get_service(request: Request) -> Iterator[LinkService]:
 Service = Annotated[LinkService, Depends(get_service)]
 
 
-def limit_rate(request: Request) -> None:
-    """Count the request against its client's rate limit, if limiting is on."""
-    limiter = request.app.state.rate_limiter
+def limit_creation(request: Request) -> None:
+    """Count the request against its client's limit for creating links, if that is on."""
+    _take(request, request.app.state.creation_limiter)
+
+
+def limit_lookups(request: Request) -> None:
+    """Count the request against its client's limit for looking codes up, if that is on."""
+    _take(request, request.app.state.lookup_limiter)
+
+
+def _take(request: Request, limiter: RateLimiter | None) -> None:
     if limiter is None:
         return
     if request.client is None:
@@ -101,7 +109,7 @@ def home() -> HTMLResponse:
     return HTMLResponse(HOME_PAGE, headers=HOME_HEADERS)
 
 
-@router.post("/", dependencies=[Depends(limit_rate)])
+@router.post("/", dependencies=[Depends(limit_creation)])
 def shorten(body: ShortenRequest, service: Service, request: Request) -> ShortenResponse:
     link = service.shorten(body.long_url, body.alias, body.expires_at)
     return ShortenResponse(
@@ -118,17 +126,22 @@ def _short_url(request: Request, code: str) -> str:
     return f"{public_url}/{code}"
 
 
-@router.get("/{code}", response_class=RedirectResponse)
+@router.get("/{code}", response_class=RedirectResponse, dependencies=[Depends(limit_lookups)])
 def follow(code: str, service: Service) -> str:
     return service.resolve(code)
 
 
-@router.head("/{code}", response_class=RedirectResponse, include_in_schema=False)
+@router.head(
+    "/{code}",
+    response_class=RedirectResponse,
+    include_in_schema=False,
+    dependencies=[Depends(limit_lookups)],
+)
 def preview(code: str, service: Service) -> str:
     return service.preview(code)
 
 
-@router.get("/{code}/stats")
+@router.get("/{code}/stats", dependencies=[Depends(limit_lookups)])
 def stats(code: str, service: Service) -> LinkStats:
     details = LinkDetails.model_validate(service.find(code))
     return LinkStats(code=code, **details.model_dump())

@@ -46,17 +46,18 @@ def test_expired_link_no_longer_resolves(service, clock):
         service.resolve(code)
 
 
-def test_shortening_again_never_brings_the_expiry_forward(service):
-    code = service.shorten(
-        "https://example.com/a", expires_at=datetime(2027, 1, 1, tzinfo=UTC)
-    ).code
-    service.shorten("https://example.com/a", expires_at=datetime(2026, 6, 1, tzinfo=UTC))
-    assert service.find(code).expires_at == datetime(2027, 1, 1, tzinfo=UTC)
+def test_expiring_link_is_not_changed_by_shortening_the_url_again(service):
+    expires_at = datetime(2027, 1, 1, tzinfo=UTC)
+    link = service.shorten("https://example.com/a", expires_at=expires_at)
+    assert service.shorten("https://example.com/a").code != link.code
+    service.shorten("https://example.com/a", expires_at=datetime(2028, 1, 1, tzinfo=UTC))
+    assert service.find(link.code).expires_at == expires_at
 
 
-def test_shortening_again_without_an_expiry_makes_the_link_permanent(service):
-    link = service.shorten("https://example.com/a", expires_at=datetime(2027, 1, 1, tzinfo=UTC))
-    assert service.shorten("https://example.com/a") == ShortLink(link.code, None)
+def test_repeating_a_request_with_alias_and_expiry_returns_the_same_link(service, session):
+    request = ("https://example.com/a", "my-link", datetime(2027, 1, 1, tzinfo=UTC))
+    assert service.shorten(*request) == service.shorten(*request)
+    assert session.query(Link).count() == 1
 
 
 def test_cleanup_deletes_only_links_expired_longer_than_the_grace_period(service, session, clock):

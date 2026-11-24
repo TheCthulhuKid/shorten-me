@@ -39,3 +39,18 @@ def test_migrated_database_deletes_aliases_with_their_link(database_url):
         connection.execute(text("DELETE FROM links"))
         assert connection.scalar(text("SELECT count(*) FROM aliases")) == 0
     engine.dispose()
+
+
+def test_rebuilding_links_keeps_the_highest_id_ever_used(database_url):
+    config = alembic_config(database_url)
+    command.upgrade(config, "096e31de8f7a")
+    engine = create_engine(database_url, poolclass=NullPool)
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO links VALUES (7, 'https://example.com/a', 0, :now, NULL)"),
+            {"now": "2026-01-01"},
+        )
+        connection.execute(text("DELETE FROM links"))
+    command.upgrade(config, "head")
+    with engine.begin() as connection:
+        assert connection.scalar(text("SELECT seq FROM sqlite_sequence WHERE name = 'links'")) == 7
