@@ -4,7 +4,8 @@ A small URL shortener: post a long URL, get a short code, and the code redirects
 
 ## Running
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/) 0.13.7 or later in the 0.13 series (`required-version`
+in `pyproject.toml`; CI installs the newest version in that range).
 
 ```sh
 uv sync

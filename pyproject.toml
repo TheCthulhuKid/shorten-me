@@ -22,6 +22,9 @@ shorten-me = "shorten_me.cli:main"
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+required-version = ">=0.13.7,<0.14"
+
 [tool.alembic]
 script_location = "shorten_me:migrations"
 
