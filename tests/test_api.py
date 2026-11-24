@@ -1,0 +1,109 @@
+import re
+from datetime import UTC, datetime
+
+import pytest
+from fastapi.testclient import TestClient
+
+from shorten_me.aliases import ALIAS_PATTERN, InvalidAlias, validate_alias
+from shorten_me.api import MAX_BODY_BYTES, router
+from shorten_me.app import create_app
+from shorten_me.settings import Settings
+
+
+@pytest.fixture
+def client(database_url, clock):
+    app = create_app(Settings(database_url=database_url))
+    app.state.clock = clock
+    with TestClient(app, follow_redirects=False) as client:
+        yield client
+
+
+def test_short_link_redirects_to_the_long_url(client):
+    code = client.post("/", json={"long_url": "https://example.com/a"}).json()["code"]
+    response = client.get(f"/{code}")
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.com/a"
+
+
+def test_invalid_url_returns_422(client):
+    assert client.post("/", json={"long_url": "ftp://example.com"}).status_code == 422
+
+
+def test_unknown_short_code_returns_404(client):
+    assert client.get("/vcTJ").status_code == 404
+
+
+def test_alias_taken_by_another_url_returns_409(client):
+    client.post("/", json={"long_url": "https://example.com/a", "alias": "my-link"})
+    response = client.post("/", json={"long_url": "https://example.com/b", "alias": "my-link"})
+    assert response.status_code == 409
+
+
+def test_expired_short_link_returns_410(client, clock):
+    body = {"long_url": "https://example.com/a", "expires_at": "2026-01-02T00:00:00Z"}
+    code = client.post("/", json=body).json()["code"]
+    clock.now = datetime(2026, 1, 3, tzinfo=UTC)
+    assert client.get(f"/{code}").status_code == 410
+
+
+def test_too_many_requests_return_429_with_retry_after(database_url):
+    settings = Settings(database_url=database_url, rate_limit=1)
+    with TestClient(create_app(settings)) as client:
+        client.post("/", json={"long_url": "https://example.com/a"})
+        response = client.post("/", json={"long_url": "https://example.com/a"})
+    assert response.status_code == 429
+    assert 0 < int(response.headers["retry-after"]) <= 60
+
+
+def test_too_many_lookups_return_429(database_url):
+    settings = Settings(database_url=database_url, lookup_rate_limit=1)
+    with TestClient(create_app(settings)) as client:
+        client.get("/vcTJ")
+        assert client.get("/vcTJ").status_code == 429
+
+
+def test_home_page_serves_the_form(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert '<form id="shorten">' in response.text
+    assert f'pattern="{ALIAS_PATTERN.pattern}"' in response.text
+    assert "script-src 'sha256-" in response.headers["content-security-policy"]
+
+
+def test_oversized_request_body_returns_413(client):
+    long_url = "https://example.com/" + "a" * MAX_BODY_BYTES
+    assert client.post("/", json={"long_url": long_url}).status_code == 413
+    chunks = (chunk for chunk in [b'{"long_url": "', long_url.encode(), b'"}'])
+    assert client.post("/", content=chunks).status_code == 413
+
+
+def test_times_in_responses_are_in_utc_with_an_offset(client):
+    body = {"long_url": "https://example.com/a", "expires_at": "2999-01-01T12:00:00+02:00"}
+    assert client.post("/", json=body).json()["expires_at"] == "2999-01-01T10:00:00Z"
+
+
+def test_head_request_redirects_without_counting_a_hit(client):
+    code = client.post("/", json={"long_url": "https://example.com/a"}).json()["code"]
+    response = client.head(f"/{code}")
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.com/a"
+    assert client.get(f"/{code}/stats").json()["hits"] == 0
+
+
+def test_every_single_segment_route_is_rejected_as_an_alias(client):
+    routes = [*client.app.routes, *router.routes]
+    paths = {route.path for route in routes if hasattr(route, "path")}
+    names = [path.removeprefix("/") for path in paths if re.fullmatch(r"/[^/{}]+", path)]
+    assert "docs" in names
+    for name in names:
+        with pytest.raises(InvalidAlias):
+            validate_alias(name)
+
+
+def test_short_url_uses_the_public_url_instead_of_the_host_header(database_url):
+    settings = Settings(database_url=database_url, public_url="https://sho.rt")
+    with TestClient(create_app(settings)) as client:
+        body = {"long_url": "https://example.com/a"}
+        response = client.post("/", json=body, headers={"Host": "evil.example"})
+    assert response.json()["short_url"] == "https://sho.rt/p"
