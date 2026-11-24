@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 
 from shorten_me.ratelimit import RateLimited
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService
+from shorten_me.urls import MAX_URL_LENGTH
 
 router = APIRouter()
+MAX_BODY_BYTES = 12 * MAX_URL_LENGTH + 1024
 HOME_PAGE = resources.files("shorten_me").joinpath("static/index.html").read_text()
 
 

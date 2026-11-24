@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from shorten_me.api import MAX_BODY_BYTES
 from shorten_me.app import create_app
 from shorten_me.settings import Settings
 
@@ -56,3 +57,10 @@ def test_home_page_serves_the_form(client):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert '<form id="shorten">' in response.text
+
+
+def test_oversized_request_body_returns_413(client):
+    long_url = "https://example.com/" + "a" * MAX_BODY_BYTES
+    assert client.post("/", json={"long_url": long_url}).status_code == 413
+    chunks = (chunk for chunk in [b'{"long_url": "', long_url.encode(), b'"}'])
+    assert client.post("/", content=chunks).status_code == 413

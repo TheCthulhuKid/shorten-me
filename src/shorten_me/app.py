@@ -36,7 +36,12 @@ def create_app(settings: Settings) -> FastAPI:
         yield
         engine.dispose()
 
-    app = FastAPI(title="shorten-me", debug=settings.debug, lifespan=lifespan)
+    app = FastAPI(
+        title="shorten-me",
+        debug=settings.debug,
+        lifespan=lifespan,
+        max_body_size=api.MAX_BODY_BYTES,
+    )
     app.state.engine = engine
     app.state.clock = utc_now
     app.state.rate_limiter = (

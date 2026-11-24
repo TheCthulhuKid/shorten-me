@@ -79,6 +79,7 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
   posting without `expires_at` makes it permanent, so a request can't cut short a link that
   someone else holds; this also revives an expired link. `expires_at` in the response is the
   expiry that applies, in UTC (`null` for never).
+* `POST /` with a body over 25 KB returns 413.
 * `POST /` is rate limited per client IP address: a client can make `SHORTEN_ME_RATE_LIMIT`
   requests in a burst, and gets them back evenly over a minute. Beyond that it returns 429
   with a `Retry-After` header in seconds. Redirects and stats aren't limited.
@@ -117,6 +118,11 @@ against it, so it has to be at the latest revision first.
 
 Migrations live in `src/shorten_me/migrations/versions/`. A test fails if they don't match
 the models.
+
+The `links` table uses SQLite's `AUTOINCREMENT`, so the short code of a deleted link is never
+handed out again. Autogenerate can't see that option, and a batch migration that rebuilds
+`links` drops it unless it passes `table_kwargs={"sqlite_autoincrement": True}` to
+`batch_alter_table`. A test fails if a migration loses it.
 
 CI runs the same checks and builds the Docker image on every push to `master` and every
 pull request.

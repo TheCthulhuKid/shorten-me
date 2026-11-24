@@ -1,7 +1,7 @@
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import NullPool, create_engine
+from sqlalchemy import NullPool, create_engine, text
 
 from shorten_me.models import Base
 from shorten_me.schema import alembic_config, upgrade_to_head
@@ -19,3 +19,11 @@ def test_migrations_downgrade_and_upgrade_cleanly(tmp_path):
     command.upgrade(config, "head")
     command.downgrade(config, "base")
     command.upgrade(config, "head")
+
+
+def test_migrated_links_table_never_reuses_ids(tmp_path):
+    url = f"sqlite:///{tmp_path / 'test.db'}"
+    upgrade_to_head(url)
+    with create_engine(url, poolclass=NullPool).connect() as connection:
+        ddl = connection.scalar(text("SELECT sql FROM sqlite_master WHERE name = 'links'"))
+    assert "AUTOINCREMENT" in ddl
