@@ -9,16 +9,17 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import AwareDatetime, BaseModel
-from sqlalchemy.orm import Session
 
+from shorten_me.aliases import ALIAS_PATTERN
 from shorten_me.errors import InvalidInput
 from shorten_me.ratelimit import RateLimited
-from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService
+from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService, open_service
 from shorten_me.urls import MAX_URL_LENGTH
 
 router = APIRouter()
 MAX_BODY_BYTES = 12 * MAX_URL_LENGTH + 1024
-HOME_PAGE = resources.files("shorten_me").joinpath("static/index.html").read_text()
+_HOME_TEMPLATE = resources.files("shorten_me").joinpath("static/index.html").read_text()
+HOME_PAGE = _HOME_TEMPLATE.replace("__ALIAS_PATTERN__", ALIAS_PATTERN.pattern)
 
 
 class ShortenRequest(BaseModel):
@@ -49,8 +50,8 @@ class LinkStats(BaseModel):
 
 def get_service(request: Request) -> Iterator[LinkService]:
     """Give each request its own session."""
-    with Session(request.app.state.engine) as session:
-        yield LinkService(session, clock=request.app.state.clock)
+    with open_service(request.app.state.engine, request.app.state.clock) as service:
+        yield service
 
 
 Service = Annotated[LinkService, Depends(get_service)]
@@ -125,3 +126,12 @@ def alias_taken(_request: Request, _error: AliasTaken) -> JSONResponse:
 
 def invalid_input(_request: Request, error: InvalidInput) -> JSONResponse:
     return JSONResponse({"detail": str(error)}, status_code=422)
+
+
+EXCEPTION_HANDLERS = {
+    LinkNotFound: link_not_found,
+    LinkExpired: link_expired,
+    RateLimited: rate_limited,
+    AliasTaken: alias_taken,
+    InvalidInput: invalid_input,
+}

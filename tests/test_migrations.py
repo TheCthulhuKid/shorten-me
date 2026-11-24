@@ -7,32 +7,29 @@ from shorten_me.models import Base
 from shorten_me.schema import alembic_config, create_db_engine, upgrade_to_head
 
 
-def test_migrations_match_the_models(tmp_path):
-    url = f"sqlite:///{tmp_path / 'test.db'}"
-    upgrade_to_head(url)
-    with create_engine(url, poolclass=NullPool).connect() as connection:
+def test_migrations_match_the_models(database_url):
+    upgrade_to_head(database_url)
+    with create_engine(database_url, poolclass=NullPool).connect() as connection:
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
 
 
-def test_migrations_downgrade_and_upgrade_cleanly(tmp_path):
-    config = alembic_config(f"sqlite:///{tmp_path / 'test.db'}")
+def test_migrations_downgrade_and_upgrade_cleanly(database_url):
+    config = alembic_config(database_url)
     command.upgrade(config, "head")
     command.downgrade(config, "base")
     command.upgrade(config, "head")
 
 
-def test_migrated_links_table_never_reuses_ids(tmp_path):
-    url = f"sqlite:///{tmp_path / 'test.db'}"
-    upgrade_to_head(url)
-    with create_engine(url, poolclass=NullPool).connect() as connection:
+def test_migrated_links_table_never_reuses_ids(database_url):
+    upgrade_to_head(database_url)
+    with create_engine(database_url, poolclass=NullPool).connect() as connection:
         ddl = connection.scalar(text("SELECT sql FROM sqlite_master WHERE name = 'links'"))
     assert "AUTOINCREMENT" in ddl
 
 
-def test_migrated_database_deletes_aliases_with_their_link(tmp_path):
-    url = f"sqlite:///{tmp_path / 'test.db'}"
-    upgrade_to_head(url)
-    engine = create_db_engine(url)
+def test_migrated_database_deletes_aliases_with_their_link(database_url):
+    upgrade_to_head(database_url)
+    engine = create_db_engine(database_url)
     with engine.begin() as connection:
         connection.execute(
             text("INSERT INTO links VALUES (1, 'https://example.com/a', 0, :now, NULL)"),

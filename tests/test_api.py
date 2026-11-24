@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from shorten_me.aliases import InvalidAlias, validate_alias
+from shorten_me.aliases import ALIAS_PATTERN, InvalidAlias, validate_alias
 from shorten_me.api import MAX_BODY_BYTES, router
 from shorten_me.app import create_app
 from shorten_me.cli import main
@@ -13,8 +13,8 @@ from shorten_me.settings import Settings
 
 
 @pytest.fixture
-def client(tmp_path):
-    app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}"))
+def client(database_url):
+    app = create_app(Settings(database_url=database_url))
     with TestClient(app, follow_redirects=False) as client:
         yield client
 
@@ -47,8 +47,8 @@ def test_expired_short_link_returns_410(client):
     assert client.get(f"/{code}").status_code == 410
 
 
-def test_too_many_requests_return_429_with_retry_after(tmp_path):
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", rate_limit=1)
+def test_too_many_requests_return_429_with_retry_after(database_url):
+    settings = Settings(database_url=database_url, rate_limit=1)
     with TestClient(create_app(settings)) as client:
         client.post("/", json={"long_url": "https://example.com/a"})
         response = client.post("/", json={"long_url": "https://example.com/a"})
@@ -61,6 +61,7 @@ def test_home_page_serves_the_form(client):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert '<form id="shorten">' in response.text
+    assert f'pattern="{ALIAS_PATTERN.pattern}"' in response.text
 
 
 def test_oversized_request_body_returns_413(client):
@@ -90,10 +91,9 @@ def test_head_request_redirects_without_counting_a_hit(client):
     assert client.get(f"/{code}/stats").json()["hits"] == 0
 
 
-def test_cleanup_rejects_a_negative_grace_period(tmp_path, monkeypatch):
-    url = f"sqlite:///{tmp_path / 'test.db'}"
-    upgrade_to_head(url)
-    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", url)
+def test_cleanup_rejects_a_negative_grace_period(database_url, monkeypatch):
+    upgrade_to_head(database_url)
+    monkeypatch.setenv("SHORTEN_ME_DATABASE_URL", database_url)
     with pytest.raises(SystemExit, match="negative"):
         main(["cleanup", "--grace-days", "-1"])
 

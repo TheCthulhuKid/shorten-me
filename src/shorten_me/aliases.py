@@ -6,7 +6,8 @@ from shorten_me.codec import is_code
 from shorten_me.errors import InvalidInput
 
 MAX_ALIAS_LENGTH = 32
-ALIAS_PATTERN = re.compile(rf"[A-Za-z0-9_-]{{3,{MAX_ALIAS_LENGTH}}}")
+# Also the `pattern` of the form's alias field, where browsers need the hyphen escaped.
+ALIAS_PATTERN = re.compile(rf"[A-Za-z0-9_\-]{{3,{MAX_ALIAS_LENGTH}}}")
 # FastAPI serves these paths itself, so an alias with these names could never be followed.
 RESERVED_ALIASES = frozenset({"docs", "redoc"})
 

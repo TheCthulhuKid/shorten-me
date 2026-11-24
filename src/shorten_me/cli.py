@@ -5,7 +5,6 @@ from collections.abc import Sequence
 from datetime import timedelta
 
 import uvicorn
-from sqlalchemy.orm import Session
 
 from shorten_me.app import create_app, utc_now
 from shorten_me.schema import (
@@ -14,7 +13,7 @@ from shorten_me.schema import (
     require_database,
     upgrade_to_head,
 )
-from shorten_me.service import InvalidGracePeriod, LinkService
+from shorten_me.service import InvalidGracePeriod, open_service
 from shorten_me.settings import Settings
 
 
@@ -73,7 +72,7 @@ def _delete_expired(database_url: str, grace: timedelta) -> int:
     upgrade_to_head(database_url)
     engine = create_db_engine(database_url)
     try:
-        with Session(engine) as session:
-            return LinkService(session, clock=utc_now).delete_expired(grace)
+        with open_service(engine, utc_now) as service:
+            return service.delete_expired(grace)
     finally:
         engine.dispose()

@@ -8,10 +8,8 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from shorten_me import api
-from shorten_me.errors import InvalidInput
-from shorten_me.ratelimit import RateLimited, RateLimiter
+from shorten_me.ratelimit import RateLimiter
 from shorten_me.schema import create_db_engine, upgrade_to_head
-from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound
 from shorten_me.settings import Settings
 
 RATE_LIMIT_PERIOD_SECONDS = 60
@@ -32,6 +30,7 @@ def create_app(settings: Settings) -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
         max_body_size=api.MAX_BODY_BYTES,
+        exception_handlers=api.EXCEPTION_HANDLERS,
     )
     app.state.engine = engine
     app.state.clock = utc_now
@@ -41,11 +40,6 @@ def create_app(settings: Settings) -> FastAPI:
         else None
     )
     app.include_router(api.router)
-    app.add_exception_handler(LinkNotFound, api.link_not_found)
-    app.add_exception_handler(LinkExpired, api.link_expired)
-    app.add_exception_handler(RateLimited, api.rate_limited)
-    app.add_exception_handler(AliasTaken, api.alias_taken)
-    app.add_exception_handler(InvalidInput, api.invalid_input)
     return app
 
 

@@ -1,10 +1,21 @@
 """Shorten long URLs and resolve short codes."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import ColumnElement, ScalarSelect, Select, and_, delete, or_, select, update
+from sqlalchemy import (
+    ColumnElement,
+    Engine,
+    ScalarSelect,
+    Select,
+    and_,
+    delete,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -152,6 +163,13 @@ class LinkService:
             if existing.link_id != link.id:
                 raise AliasTaken(alias) from None
         return alias
+
+
+@contextmanager
+def open_service(engine: Engine, clock: Callable[[], datetime]) -> Iterator[LinkService]:
+    """Yield a `LinkService` on a session of its own, closed afterwards."""
+    with Session(engine) as session:
+        yield LinkService(session, clock)
 
 
 def _link_id(code: str) -> int | ScalarSelect[int]:
