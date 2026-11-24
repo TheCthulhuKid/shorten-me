@@ -11,7 +11,8 @@ uv sync
 uv run shorten-me
 ```
 
-The service listens on `http://127.0.0.1:8000`; interactive API docs are at `/docs`.
+The service listens on `http://127.0.0.1:8000`. Open it in a browser for a form that shortens
+links (it needs JavaScript); interactive API docs are at `/docs`.
 Settings come from environment variables:
 
 | Variable | Default |
@@ -48,6 +49,8 @@ In the image the service listens on `0.0.0.0:8000` and keeps its SQLite database
 
 ## API
 
+* `GET /` returns the HTML form. It posts to `POST /` and converts the expiry from the
+  browser's local time to UTC.
 * `POST /` with a JSON body `{"long_url": "https://..."}` returns
   `{"code": ..., "short_url": ..., "expires_at": ...}`.
   Shortening the same URL again returns the same code. A URL that isn't http(s) or is longer

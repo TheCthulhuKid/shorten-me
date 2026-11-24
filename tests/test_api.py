@@ -49,3 +49,10 @@ def test_too_many_requests_return_429_with_retry_after(tmp_path):
         response = client.post("/", json={"long_url": "https://example.com/a"})
     assert response.status_code == 429
     assert 0 < int(response.headers["retry-after"]) <= 60
+
+
+def test_home_page_serves_the_form(client):
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert '<form id="shorten">' in response.text

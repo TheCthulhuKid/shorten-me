@@ -3,10 +3,11 @@
 import math
 from collections.abc import Iterator
 from datetime import datetime
+from importlib import resources
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import AwareDatetime, BaseModel
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,7 @@ from shorten_me.ratelimit import RateLimited
 from shorten_me.service import AliasTaken, LinkExpired, LinkNotFound, LinkService
 
 router = APIRouter()
+HOME_PAGE = resources.files("shorten_me").joinpath("static/index.html").read_text()
 
 
 class ShortenRequest(BaseModel):
@@ -59,6 +61,11 @@ def limit_rate(request: Request) -> None:
     if request.client is None:
         raise RuntimeError("the server gave no client address to rate limit by")
     limiter.take(request.client.host)
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def home() -> str:
+    return HOME_PAGE
 
 
 @router.post("/", dependencies=[Depends(limit_rate)])
